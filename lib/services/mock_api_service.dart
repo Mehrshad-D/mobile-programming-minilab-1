@@ -1,8 +1,12 @@
 import '../models/api_response.dart';
 import '../models/company.dart';
 import '../models/job.dart';
+import '../models/job_category.dart';
 import '../models/job_filters.dart';
+import '../models/job_search_meta.dart';
+import '../models/job_skill.dart';
 import '../models/login_request.dart';
+import '../models/province.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
 import 'api_service.dart';
@@ -219,14 +223,8 @@ class MockApiService implements ApiService {
   @override
   Future<List<String>> getCategories() async {
     await Future.delayed(const Duration(milliseconds: 300));
-    return const [
-      'وب، برنامه‌نویسی و نرم‌افزار',
-      'مهندسی صنایع و مدیریت صنعتی',
-      'مالی و حسابداری',
-      'بازاریابی و فروش',
-      'منابع انسانی',
-      'گرافیک و طراحی',
-    ];
+    // Derived from the rich category list so there is a single source of truth.
+    return _jobCategories.map((c) => c.name).toList();
   }
 
   @override
@@ -287,8 +285,84 @@ class MockApiService implements ApiService {
   }
 
   // ---------------------------------------------------------------------------
+  // Section 5.2: Meta / Reference data
+  // ---------------------------------------------------------------------------
+
+  /// GET /api/v10/job/categories
+  @override
+  Future<List<JobCategory>> getJobCategories() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return List.unmodifiable(_jobCategories);
+  }
+
+  /// GET /api/v10/job_search_meta — facet lists with job counts.
+  @override
+  Future<JobSearchMeta> getJobSearchMeta() async {
+    await Future.delayed(_latency);
+    return JobSearchMeta(
+      jobCategories: _countBy(_jobs.map((j) => j.category)),
+      companyCategories: _countBy(_jobs.map((j) => j.company.industry)),
+      locations: _countBy(_jobs.map((j) => j.location.province)),
+      companySizes:
+          _countBy(_jobs.map((j) => _sizeBucket(j.company.employeeCount))),
+      total: _jobs.length,
+    );
+  }
+
+  /// GET /api/v10/region/province
+  @override
+  Future<List<Province>> getProvinces() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return List.unmodifiable(_provinces);
+  }
+
+  /// GET /api/v10/job-skills/search?q={query}
+  @override
+  Future<List<JobSkill>> searchSkills(String query) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return List.unmodifiable(_skills);
+    return _skills
+        .where((skill) => skill.name.toLowerCase().contains(q))
+        .toList();
+  }
+
+  /// GET /api/v10/utils/last-applied-job — needs authentication (cookies).
+  @override
+  Future<Job?> getLastAppliedJob() async {
+    await Future.delayed(_latency);
+    if (_currentUser == null) {
+      throw const ApiException(
+        'برای مشاهده آخرین درخواست ابتدا وارد شوید',
+        statusCode: 401,
+      );
+    }
+    if (_appliedJobIds.isEmpty) return null;
+    final lastId = _appliedJobIds.last;
+    return _jobs.firstWhere((j) => j.id == lastId);
+  }
+
+  // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  /// Groups values and counts occurrences, for the search-meta facets.
+  List<MetaFacet> _countBy(Iterable<String> values) {
+    final counts = <String, int>{};
+    for (final value in values) {
+      counts[value] = (counts[value] ?? 0) + 1;
+    }
+    return counts.entries
+        .map((e) => MetaFacet(name: e.key, count: e.value))
+        .toList();
+  }
+
+  String _sizeBucket(int? employeeCount) {
+    if (employeeCount == null) return 'نامشخص';
+    if (employeeCount <= 50) return '۱ تا ۵۰ نفر';
+    if (employeeCount <= 200) return '۵۱ تا ۲۰۰ نفر';
+    return 'بیش از ۲۰۰ نفر';
+  }
 
   PaginatedResponse<Job> _paginate(List<Job> source, int page) {
     final total = source.length;
@@ -318,6 +392,95 @@ class MockApiService implements ApiService {
   static const String _catIndustrial = 'مهندسی صنایع و مدیریت صنعتی';
   static const String _catMarketing = 'بازاریابی و فروش';
   static const String _catDesign = 'گرافیک و طراحی';
+
+  // Section 5.2 reference data ------------------------------------------------
+
+  static const List<JobCategory> _jobCategories = [
+    JobCategory(
+      id: 1,
+      machineName: 'وب،-برنامه‌نویسی-و-نرم‌افزار',
+      name: _catSoftware,
+      englishName: 'web, software development',
+      popularity: 9,
+      homePopularity: 10,
+    ),
+    JobCategory(
+      id: 2,
+      machineName: 'مهندسی-صنایع-و-مدیریت-صنعتی',
+      name: _catIndustrial,
+      englishName: 'industrial engineering & management',
+      popularity: 7,
+      homePopularity: 6,
+    ),
+    JobCategory(
+      id: 3,
+      machineName: 'مالی-و-حسابداری',
+      name: 'مالی و حسابداری',
+      englishName: 'finance & accounting',
+      popularity: 6,
+      homePopularity: 5,
+    ),
+    JobCategory(
+      id: 4,
+      machineName: 'بازاریابی-و-فروش',
+      name: _catMarketing,
+      englishName: 'marketing & sales',
+      popularity: 8,
+      homePopularity: 8,
+    ),
+    JobCategory(
+      id: 5,
+      machineName: 'منابع-انسانی',
+      name: 'منابع انسانی',
+      englishName: 'human resources',
+      popularity: 5,
+      homePopularity: 4,
+    ),
+    JobCategory(
+      id: 6,
+      machineName: 'گرافیک-و-طراحی',
+      name: _catDesign,
+      englishName: 'graphic & design',
+      popularity: 7,
+      homePopularity: 7,
+    ),
+  ];
+
+  static const List<Province> _provinces = [
+    Province(
+      id: 1,
+      englishName: 'East Azerbaijan',
+      name: 'آذربایجان شرقی',
+      slug: 'آذربایجان-شرقی',
+    ),
+    Province(id: 2, englishName: 'Tehran', name: 'تهران', slug: 'تهران'),
+    Province(id: 3, englishName: 'Isfahan', name: 'اصفهان', slug: 'اصفهان'),
+    Province(id: 4, englishName: 'Fars', name: 'فارس', slug: 'فارس'),
+    Province(
+      id: 5,
+      englishName: 'Razavi Khorasan',
+      name: 'خراسان رضوی',
+      slug: 'خراسان-رضوی',
+    ),
+    Province(id: 6, englishName: 'Alborz', name: 'البرز', slug: 'البرز'),
+    Province(id: 7, englishName: 'Khuzestan', name: 'خوزستان', slug: 'خوزستان'),
+    Province(id: 8, englishName: 'Gilan', name: 'گیلان', slug: 'گیلان'),
+  ];
+
+  static const List<JobSkill> _skills = [
+    JobSkill(id: 472, name: 'Python', total: 13001),
+    JobSkill(id: 101, name: 'Java', total: 9800),
+    JobSkill(id: 55, name: 'JavaScript', total: 15230),
+    JobSkill(id: 900, name: 'Flutter', suggested: true, total: 4200),
+    JobSkill(id: 901, name: 'Dart', isNew: true, total: 3100),
+    JobSkill(id: 300, name: 'React', total: 8700),
+    JobSkill(id: 301, name: 'Django', total: 2600),
+    JobSkill(id: 400, name: 'Docker', total: 5400),
+    JobSkill(id: 401, name: 'Kubernetes', total: 2300),
+    JobSkill(id: 500, name: 'SQL', total: 11000),
+    JobSkill(id: 600, name: 'Figma', total: 1900),
+    JobSkill(id: 700, name: 'Product Management', total: 1500),
+  ];
 
   static final List<Company> _companies = [
     const Company(

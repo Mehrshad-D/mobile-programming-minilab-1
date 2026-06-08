@@ -1,8 +1,12 @@
 import '../models/api_response.dart';
 import '../models/company.dart';
 import '../models/job.dart';
+import '../models/job_category.dart';
 import '../models/job_filters.dart';
+import '../models/job_search_meta.dart';
+import '../models/job_skill.dart';
 import '../models/login_request.dart';
+import '../models/province.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
 
@@ -58,4 +62,22 @@ abstract class ApiService {
   Future<List<({String key, String label})>> getBenefits();
 
   Future<void> applyToJob(String jobId);
+
+  // --- Section 5.2: Meta / Reference data ---
+
+  /// `GET /api/v10/job/categories`
+  Future<List<JobCategory>> getJobCategories();
+
+  /// `GET /api/v10/job_search_meta`
+  Future<JobSearchMeta> getJobSearchMeta();
+
+  /// `GET /api/v10/region/province`
+  Future<List<Province>> getProvinces();
+
+  /// `GET /api/v10/job-skills/search?q={query}`
+  Future<List<JobSkill>> searchSkills(String query);
+
+  /// `GET /api/v10/utils/last-applied-job` — requires authentication.
+  /// Returns the most recently applied job, or `null` if none.
+  Future<Job?> getLastAppliedJob();
 }
