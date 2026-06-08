@@ -1,4 +1,5 @@
 import '../models/job.dart';
+import '../models/job_filters.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
 
@@ -24,8 +25,8 @@ class JobListPresenter {
   int _lastPage = 1;
   bool _isLoading = false;
 
-  String? _keyword;
-  String? _location;
+  /// The active search query; reused when paginating so filters stick.
+  JobFilters _filters = const JobFilters();
 
   bool get hasMore => _currentPage < _lastPage;
 
@@ -39,23 +40,20 @@ class JobListPresenter {
     }
   }
 
-  /// Loads the first page, optionally applying a new search filter.
-  Future<void> loadJobs({String? keyword, String? location}) async {
+  /// Loads the first page. Pass [filters] to apply a new search; omit it to
+  /// reload the current query (e.g. pull-to-refresh).
+  Future<void> loadJobs([JobFilters? filters]) async {
     if (_isLoading) return;
     _isLoading = true;
-    _keyword = keyword;
-    _location = location;
+    _filters = (filters ?? _filters).copyWith(page: 1);
     _currentPage = 1;
     _view.showLoading();
     try {
-      final response = await _api.getJobs(
-        page: _currentPage,
-        keyword: _keyword,
-        location: _location,
-      );
+      final response = await _api.getJobs(_filters);
       _jobs
         ..clear()
         ..addAll(response.data);
+      _currentPage = response.meta.currentPage;
       _lastPage = response.meta.lastPage;
       _view.showJobs(List.unmodifiable(_jobs));
     } on ApiException catch (e) {
@@ -68,17 +66,15 @@ class JobListPresenter {
     }
   }
 
-  /// Appends the next page of results to the existing list.
+  /// Appends the next page of results, keeping the active filters.
   Future<void> loadMore() async {
     if (_isLoading || !hasMore) return;
     _isLoading = true;
     _view.showLoadingMore(true);
+    final nextQuery = _filters.copyWith(page: _currentPage + 1);
     try {
-      final response = await _api.getJobs(
-        page: _currentPage + 1,
-        keyword: _keyword,
-        location: _location,
-      );
+      final response = await _api.getJobs(nextQuery);
+      _filters = nextQuery;
       _currentPage = response.meta.currentPage;
       _lastPage = response.meta.lastPage;
       _jobs.addAll(response.data);

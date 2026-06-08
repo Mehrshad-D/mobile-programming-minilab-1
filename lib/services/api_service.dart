@@ -1,6 +1,7 @@
 import '../models/api_response.dart';
 import '../models/company.dart';
 import '../models/job.dart';
+import '../models/job_filters.dart';
 import '../models/login_request.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
@@ -30,11 +31,9 @@ abstract class ApiService {
 
   User? get currentUser;
 
-  Future<PaginatedResponse<Job>> getJobs({
-    int page = 1,
-    String? keyword,
-    String? location,
-  });
+  /// Search jobs. All `GET /jobs` parameters from section 5.1 are carried by
+  /// [JobFilters], including paging via [JobFilters.page].
+  Future<PaginatedResponse<Job>> getJobs(JobFilters filters);
 
   Future<Job> getJobById(String id);
 

@@ -1,5 +1,27 @@
 import 'company.dart';
 
+/// Stable keys for the `filters[has_*]` checkboxes described in section 5.1.
+/// A job stores the subset of benefits it offers; the search filters by them.
+class JobBenefit {
+  JobBenefit._();
+
+  static const String usd = 'usd';
+  static const String militaryPlacement = 'military_placement';
+  static const String loan = 'loan';
+  static const String project = 'project';
+  static const String bonus = 'bonus';
+  static const String commission = 'commission';
+  static const String overtimeOffering = 'overtime_offering';
+  static const String afternoonShift = 'afternoon_shift';
+  static const String promotion = 'promotion';
+  static const String partTime = 'part_time';
+  static const String disabilitySupport = 'disability_support';
+  static const String flexibleHours = 'flexible_hours';
+  static const String supplementaryInsurance = 'supplementary_insurance';
+  static const String esop = 'esop';
+  static const String businessTrip = 'business_trip';
+}
+
 /// Geographic location of a job.
 class JobLocation {
   final String province;
@@ -55,8 +77,22 @@ class Job {
   final String contractType;
   final Salary salary;
   final String experienceLevel;
+
+  /// Persian-formatted date shown in the UI (e.g. '۱۴۰۵/۰۳/۱۰').
   final String publishedAt;
+
+  /// Machine-comparable timestamp used for `sort_by=published_at_desc`.
+  final DateTime postedAt;
+
   final bool isRemote;
+  final bool isInternship;
+
+  /// Job category, matched against `filters[job_categories]`.
+  final String category;
+
+  /// Benefit keys this job offers, matched against `filters[has_*]`.
+  final Set<String> benefits;
+
   final String? description;
   final List<String> requirements;
 
@@ -69,7 +105,11 @@ class Job {
     required this.salary,
     required this.experienceLevel,
     required this.publishedAt,
+    required this.postedAt,
     required this.isRemote,
+    required this.category,
+    this.isInternship = false,
+    this.benefits = const {},
     this.description,
     this.requirements = const [],
   });
@@ -84,7 +124,15 @@ class Job {
       salary: Salary.fromJson(json['salary'] as Map<String, dynamic>),
       experienceLevel: json['experience_level'] as String,
       publishedAt: json['published_at'] as String,
+      postedAt: DateTime.tryParse(json['posted_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
       isRemote: json['is_remote'] as bool? ?? false,
+      isInternship: json['is_internship'] as bool? ?? false,
+      category: json['category'] as String? ?? '',
+      benefits: (json['benefits'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toSet() ??
+          const {},
       description: json['description'] as String?,
       requirements: (json['requirements'] as List<dynamic>?)
               ?.map((e) => e as String)
@@ -103,7 +151,11 @@ class Job {
       'salary': salary.toJson(),
       'experience_level': experienceLevel,
       'published_at': publishedAt,
+      'posted_at': postedAt.toIso8601String(),
       'is_remote': isRemote,
+      'is_internship': isInternship,
+      'category': category,
+      'benefits': benefits.toList(),
       'description': description,
       'requirements': requirements,
     };

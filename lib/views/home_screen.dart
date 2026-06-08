@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/job.dart';
+import '../models/job_filters.dart';
 import '../presenters/job_presenter.dart';
 import '../services/mock_api_service.dart';
 import '../utils/constants.dart';
@@ -24,6 +25,8 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
   List<Job> _jobs = [];
   List<String> _locations = [];
   String? _selectedLocation;
+  JobSort _selectedSort = JobSort.publishedAtDesc;
+  bool _remoteOnly = false;
 
   bool _isLoading = false;
   bool _isLoadingMore = false;
@@ -52,18 +55,23 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
     }
   }
 
-  void _search() {
-    FocusScope.of(context).unfocus();
-    _presenter.loadJobs(
-      keyword: _searchController.text.trim(),
-      location: _selectedLocation,
+  /// Builds the section 5.1 query from the current UI controls.
+  JobFilters _currentFilters() {
+    final keyword = _searchController.text.trim();
+    return JobFilters(
+      keywords: keyword.isEmpty ? const [] : [keyword],
+      locations: _selectedLocation == null ? const [] : [_selectedLocation!],
+      remote: _remoteOnly,
+      sortBy: _selectedSort,
     );
   }
 
-  Future<void> _refresh() => _presenter.loadJobs(
-        keyword: _searchController.text.trim(),
-        location: _selectedLocation,
-      );
+  void _search() {
+    FocusScope.of(context).unfocus();
+    _presenter.loadJobs(_currentFilters());
+  }
+
+  Future<void> _refresh() => _presenter.loadJobs(_currentFilters());
 
   void _openJob(Job job) {
     Navigator.of(context).push(
@@ -204,6 +212,41 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
                   ),
                   child: const Text(AppStrings.search),
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              const Icon(Icons.sort, size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: AppSpacing.xs),
+              DropdownButton<JobSort>(
+                value: _selectedSort,
+                underline: const SizedBox.shrink(),
+                items: JobSort.values
+                    .map(
+                      (sort) => DropdownMenuItem<JobSort>(
+                        value: sort,
+                        child: Text(sort.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (sort) {
+                  if (sort == null) return;
+                  setState(() => _selectedSort = sort);
+                  _search();
+                },
+              ),
+              const Spacer(),
+              FilterChip(
+                label: const Text(AppStrings.remote),
+                selected: _remoteOnly,
+                onSelected: (selected) {
+                  setState(() => _remoteOnly = selected);
+                  _search();
+                },
+                selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                checkmarkColor: AppColors.primary,
               ),
             ],
           ),

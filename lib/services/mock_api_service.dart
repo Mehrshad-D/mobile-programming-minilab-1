@@ -1,6 +1,7 @@
 import '../models/api_response.dart';
 import '../models/company.dart';
 import '../models/job.dart';
+import '../models/job_filters.dart';
 import '../models/login_request.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
@@ -72,25 +73,85 @@ class MockApiService implements ApiService {
   // ---------------------------------------------------------------------------
 
   @override
-  Future<PaginatedResponse<Job>> getJobs({
-    int page = 1,
-    String? keyword,
-    String? location,
-  }) async {
+  Future<PaginatedResponse<Job>> getJobs(JobFilters filters) async {
     await Future.delayed(_latency);
 
-    final filtered = _jobs.where((job) {
-      final matchesKeyword = keyword == null ||
-          keyword.trim().isEmpty ||
-          job.title.contains(keyword.trim()) ||
-          job.company.name.contains(keyword.trim());
-      final matchesLocation = location == null ||
-          location.trim().isEmpty ||
-          job.location.province == location.trim();
-      return matchesKeyword && matchesLocation;
-    }).toList();
+    final matched = _jobs.where((job) => _matches(job, filters)).toList();
+    _sort(matched, filters.sortBy);
+    return _paginate(matched, filters.page);
+  }
 
-    return _paginate(filtered, page);
+  /// Applies every section 5.1 filter. Within a facet values are OR-ed;
+  /// across facets they are AND-ed.
+  bool _matches(Job job, JobFilters f) {
+    // filters[keywords][] -> matches title, company or category (OR).
+    final keywords =
+        f.keywords.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
+    if (keywords.isNotEmpty) {
+      final hit = keywords.any((k) =>
+          job.title.contains(k) ||
+          job.company.name.contains(k) ||
+          job.category.contains(k));
+      if (!hit) return false;
+    }
+
+    // filters[locations][]
+    if (f.locations.isNotEmpty &&
+        !f.locations.contains(job.location.province)) {
+      return false;
+    }
+
+    // filters[job_categories][]
+    if (f.jobCategories.isNotEmpty &&
+        !f.jobCategories.contains(job.category)) {
+      return false;
+    }
+
+    // filters[job_types][]
+    if (f.jobTypes.isNotEmpty && !f.jobTypes.contains(job.contractType)) {
+      return false;
+    }
+
+    // filters[remote]
+    if (f.remote && !job.isRemote) return false;
+
+    // filters[internship]
+    if (f.internship && !job.isInternship) return false;
+
+    // filters[has_*] -> the job must offer every requested benefit (AND).
+    if (f.benefits.isNotEmpty &&
+        !f.benefits.every((b) => job.benefits.contains(b))) {
+      return false;
+    }
+
+    // filters[sal_min][] -> negotiable (null amount) jobs are excluded.
+    if (f.salaryMin != null) {
+      final amount = job.salary.amount;
+      if (amount == null || amount < f.salaryMin!) return false;
+    }
+
+    // filters[w_e][]
+    if (f.workExperiences.isNotEmpty &&
+        !f.workExperiences.contains(job.experienceLevel)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /// Implements the `sort_by` parameter.
+  void _sort(List<Job> jobs, JobSort sortBy) {
+    switch (sortBy) {
+      case JobSort.salaryDesc:
+        // Negotiable jobs (null amount) sink to the bottom.
+        jobs.sort((a, b) {
+          final sa = a.salary.amount ?? -1;
+          final sb = b.salary.amount ?? -1;
+          return sb.compareTo(sa);
+        });
+      case JobSort.publishedAtDesc:
+        jobs.sort((a, b) => b.postedAt.compareTo(a.postedAt));
+    }
   }
 
   @override
@@ -120,6 +181,7 @@ class MockApiService implements ApiService {
   }) async {
     await Future.delayed(_latency);
     final companyJobs = _jobs.where((j) => j.company.slug == slug).toList();
+    _sort(companyJobs, JobSort.publishedAtDesc);
     return _paginate(companyJobs, page);
   }
 
@@ -200,6 +262,12 @@ class MockApiService implements ApiService {
   // Seed data
   // ---------------------------------------------------------------------------
 
+  // Category constants reused by the seed jobs (match getCategories()).
+  static const String _catSoftware = 'وب، برنامه‌نویسی و نرم‌افزار';
+  static const String _catIndustrial = 'مهندسی صنایع و مدیریت صنعتی';
+  static const String _catMarketing = 'بازاریابی و فروش';
+  static const String _catDesign = 'گرافیک و طراحی';
+
   static final List<Company> _companies = [
     const Company(
       id: 'company_1',
@@ -253,6 +321,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('navavaran'),
       location: const JobLocation(province: 'تهران', city: 'تهران'),
       contractType: 'تمام‌وقت',
+      category: _catSoftware,
       salary: const Salary(
         amount: null,
         isNegotiable: true,
@@ -260,7 +329,15 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'بیش از سه سال',
       publishedAt: '۱۴۰۵/۰۳/۱۰',
+      postedAt: DateTime(2026, 5, 10),
       isRemote: false,
+      benefits: const {
+        JobBenefit.project,
+        JobBenefit.bonus,
+        JobBenefit.supplementaryInsurance,
+        JobBenefit.flexibleHours,
+        JobBenefit.militaryPlacement,
+      },
       description:
           'به دنبال توسعه‌دهنده‌ای مسلط به Flutter برای ساخت اپلیکیشن‌های موبایل هستیم. آشنایی با معماری تمیز و مدیریت state الزامی است.',
       requirements: const [
@@ -276,6 +353,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('daadeh-pardazan'),
       location: const JobLocation(province: 'اصفهان', city: 'اصفهان'),
       contractType: 'تمام‌وقت',
+      category: _catSoftware,
       salary: const Salary(
         amount: 45000000,
         isNegotiable: false,
@@ -283,7 +361,14 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'دو تا چهار سال',
       publishedAt: '۱۴۰۵/۰۳/۰۹',
+      postedAt: DateTime(2026, 5, 9),
       isRemote: true,
+      benefits: const {
+        JobBenefit.usd,
+        JobBenefit.supplementaryInsurance,
+        JobBenefit.flexibleHours,
+        JobBenefit.esop,
+      },
       description:
           'توسعه سرویس‌های بک‌اند با Django و FastAPI و طراحی پایگاه‌داده برای محصولات داده‌محور.',
       requirements: const [
@@ -299,6 +384,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('mehrsan'),
       location: const JobLocation(province: 'تهران', city: 'تهران'),
       contractType: 'تمام‌وقت',
+      category: _catMarketing,
       salary: const Salary(
         amount: 25000000,
         isNegotiable: false,
@@ -306,7 +392,13 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'کمتر از سه سال',
       publishedAt: '۱۴۰۵/۰۳/۰۸',
+      postedAt: DateTime(2026, 5, 8),
       isRemote: false,
+      benefits: const {
+        JobBenefit.bonus,
+        JobBenefit.commission,
+        JobBenefit.promotion,
+      },
       description:
           'مدیریت کمپین‌های تبلیغاتی، تحلیل داده‌های بازاریابی و رشد کانال‌های جذب کاربر.',
       requirements: const [
@@ -321,6 +413,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('parto-studio'),
       location: const JobLocation(province: 'شیراز', city: 'شیراز'),
       contractType: 'پاره‌وقت',
+      category: _catDesign,
       salary: const Salary(
         amount: null,
         isNegotiable: true,
@@ -328,7 +421,13 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'دو تا چهار سال',
       publishedAt: '۱۴۰۵/۰۳/۰۷',
+      postedAt: DateTime(2026, 5, 7),
       isRemote: true,
+      benefits: const {
+        JobBenefit.flexibleHours,
+        JobBenefit.partTime,
+        JobBenefit.businessTrip,
+      },
       description:
           'طراحی رابط کاربری اپلیکیشن‌ها و وب‌سایت‌ها با تمرکز بر تجربه کاربری و دسترس‌پذیری.',
       requirements: const [
@@ -343,6 +442,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('navavaran'),
       location: const JobLocation(province: 'تهران', city: 'تهران'),
       contractType: 'تمام‌وقت',
+      category: _catSoftware,
       salary: const Salary(
         amount: 60000000,
         isNegotiable: false,
@@ -350,7 +450,14 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'بیش از سه سال',
       publishedAt: '۱۴۰۵/۰۳/۰۶',
+      postedAt: DateTime(2026, 5, 6),
       isRemote: false,
+      benefits: const {
+        JobBenefit.supplementaryInsurance,
+        JobBenefit.loan,
+        JobBenefit.overtimeOffering,
+        JobBenefit.esop,
+      },
       description:
           'مدیریت زیرساخت ابری، راه‌اندازی CI/CD و پایش سرویس‌ها در محیط تولید.',
       requirements: const [
@@ -365,6 +472,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('mehrsan'),
       location: const JobLocation(province: 'تهران', city: 'تهران'),
       contractType: 'تمام‌وقت',
+      category: _catMarketing,
       salary: const Salary(
         amount: 20000000,
         isNegotiable: false,
@@ -372,7 +480,14 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'کمتر از سه سال',
       publishedAt: '۱۴۰۵/۰۳/۰۵',
+      postedAt: DateTime(2026, 5, 5),
       isRemote: false,
+      benefits: const {
+        JobBenefit.commission,
+        JobBenefit.bonus,
+        JobBenefit.promotion,
+        JobBenefit.afternoonShift,
+      },
       description:
           'توسعه بازار سازمانی، مذاکره با مشتریان کلیدی و مدیریت قیف فروش.',
       requirements: const [
@@ -387,6 +502,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('daadeh-pardazan'),
       location: const JobLocation(province: 'اصفهان', city: 'اصفهان'),
       contractType: 'تمام‌وقت',
+      category: _catSoftware,
       salary: const Salary(
         amount: null,
         isNegotiable: true,
@@ -394,7 +510,14 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'دو تا چهار سال',
       publishedAt: '۱۴۰۵/۰۳/۰۴',
+      postedAt: DateTime(2026, 5, 4),
       isRemote: true,
+      benefits: const {
+        JobBenefit.usd,
+        JobBenefit.supplementaryInsurance,
+        JobBenefit.flexibleHours,
+        JobBenefit.project,
+      },
       description:
           'ساخت مدل‌های یادگیری ماشین، تحلیل داده و ارائه بینش تجاری به تیم محصول.',
       requirements: const [
@@ -409,6 +532,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('navavaran'),
       location: const JobLocation(province: 'تهران', city: 'تهران'),
       contractType: 'تمام‌وقت',
+      category: _catSoftware,
       salary: const Salary(
         amount: 40000000,
         isNegotiable: false,
@@ -416,7 +540,14 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'دو تا چهار سال',
       publishedAt: '۱۴۰۵/۰۳/۰۳',
+      postedAt: DateTime(2026, 5, 3),
       isRemote: false,
+      benefits: const {
+        JobBenefit.supplementaryInsurance,
+        JobBenefit.loan,
+        JobBenefit.promotion,
+        JobBenefit.disabilitySupport,
+      },
       description:
           'توسعه رابط کاربری وب با React و TypeScript و همکاری نزدیک با تیم طراحی.',
       requirements: const [
@@ -431,6 +562,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('mehrsan'),
       location: const JobLocation(province: 'تهران', city: 'تهران'),
       contractType: 'تمام‌وقت',
+      category: _catIndustrial,
       salary: const Salary(
         amount: null,
         isNegotiable: true,
@@ -438,7 +570,14 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'بیش از سه سال',
       publishedAt: '۱۴۰۵/۰۳/۰۲',
+      postedAt: DateTime(2026, 5, 2),
       isRemote: false,
+      benefits: const {
+        JobBenefit.bonus,
+        JobBenefit.esop,
+        JobBenefit.supplementaryInsurance,
+        JobBenefit.businessTrip,
+      },
       description:
           'تعریف نقشه راه محصول، اولویت‌بندی ویژگی‌ها و هماهنگی میان تیم‌های مختلف.',
       requirements: const [
@@ -453,6 +592,7 @@ class MockApiService implements ApiService {
       company: _companyBySlug('parto-studio'),
       location: const JobLocation(province: 'شیراز', city: 'شیراز'),
       contractType: 'کارآموزی',
+      category: _catDesign,
       salary: const Salary(
         amount: null,
         isNegotiable: true,
@@ -460,7 +600,12 @@ class MockApiService implements ApiService {
       ),
       experienceLevel: 'بدون نیاز به سابقه',
       publishedAt: '۱۴۰۵/۰۳/۰۱',
+      postedAt: DateTime(2026, 5, 1),
       isRemote: false,
+      isInternship: true,
+      benefits: const {
+        JobBenefit.flexibleHours,
+      },
       description:
           'همکاری در پروژه‌های طراحی برند و محتوای بصری زیر نظر تیم خلاقیت.',
       requirements: const [
