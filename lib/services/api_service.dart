@@ -49,5 +49,13 @@ abstract class ApiService {
 
   Future<List<String>> getLocations();
 
+  Future<List<String>> getJobTypes();
+
+  Future<List<String>> getWorkExperiences();
+
+  Future<List<({String label, int value})>> getSalaryRanges();
+
+  Future<List<({String key, String label})>> getBenefits();
+
   Future<void> applyToJob(String jobId);
 }

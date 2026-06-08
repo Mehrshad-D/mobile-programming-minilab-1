@@ -1,3 +1,4 @@
+import '../models/filter_meta.dart';
 import '../models/job.dart';
 import '../models/job_filters.dart';
 import '../services/api_service.dart';
@@ -11,6 +12,7 @@ abstract class JobListView {
   void showJobs(List<Job> jobs);
   void showLoadingMore(bool isLoadingMore);
   void showLocations(List<String> locations);
+  void showFilterMeta(FilterMeta meta);
 }
 
 /// Drives the job list: search, pull-to-refresh and incremental pagination.
@@ -37,6 +39,29 @@ class JobListPresenter {
       _view.showLocations(locations);
     } catch (_) {
       // The filter is optional; ignore failures silently.
+    }
+  }
+
+  /// Loads the reference data for the filter bottom-sheet (categories, job
+  /// types, work experience, salary ranges, benefits).
+  Future<void> loadFilterMeta() async {
+    try {
+      final categories = await _api.getCategories();
+      final jobTypes = await _api.getJobTypes();
+      final workExperiences = await _api.getWorkExperiences();
+      final salaryRanges = await _api.getSalaryRanges();
+      final benefits = await _api.getBenefits();
+      _view.showFilterMeta(
+        FilterMeta(
+          categories: categories,
+          jobTypes: jobTypes,
+          workExperiences: workExperiences,
+          salaryRanges: salaryRanges,
+          benefits: benefits,
+        ),
+      );
+    } catch (_) {
+      // The filter sheet is optional; ignore failures silently.
     }
   }
 

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../models/filter_meta.dart';
 import '../models/job.dart';
 import '../models/job_filters.dart';
 import '../presenters/job_presenter.dart';
 import '../services/mock_api_service.dart';
 import '../utils/constants.dart';
+import '../widgets/filter_bottom_sheet.dart';
 import '../widgets/job_card.dart';
 import '../widgets/loading_widget.dart';
 import 'job_detail_screen.dart';
@@ -24,9 +26,11 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
 
   List<Job> _jobs = [];
   List<String> _locations = [];
-  String? _selectedLocation;
-  JobSort _selectedSort = JobSort.publishedAtDesc;
-  bool _remoteOnly = false;
+  FilterMeta _filterMeta = FilterMeta.empty;
+
+  /// Single source of truth for the active query (everything except the
+  /// keyword, which lives in the text field and is merged in at search time).
+  JobFilters _filters = const JobFilters();
 
   bool _isLoading = false;
   bool _isLoadingMore = false;
@@ -38,8 +42,20 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
     _presenter = JobListPresenter(this, MockApiService());
     _scrollController.addListener(_onScroll);
     _presenter.loadLocations();
+    _presenter.loadFilterMeta();
     _presenter.loadJobs();
   }
+
+  String? get _selectedLocation =>
+      _filters.locations.isEmpty ? null : _filters.locations.first;
+
+  bool get _hasSheetFilters =>
+      _filters.jobCategories.isNotEmpty ||
+      _filters.jobTypes.isNotEmpty ||
+      _filters.workExperiences.isNotEmpty ||
+      _filters.benefits.isNotEmpty ||
+      _filters.salaryMin != null ||
+      _filters.internship;
 
   @override
   void dispose() {
@@ -55,14 +71,11 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
     }
   }
 
-  /// Builds the section 5.1 query from the current UI controls.
+  /// Merges the live keyword text into the stored filters before searching.
   JobFilters _currentFilters() {
     final keyword = _searchController.text.trim();
-    return JobFilters(
+    return _filters.copyWith(
       keywords: keyword.isEmpty ? const [] : [keyword],
-      locations: _selectedLocation == null ? const [] : [_selectedLocation!],
-      remote: _remoteOnly,
-      sortBy: _selectedSort,
     );
   }
 
@@ -72,6 +85,24 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
   }
 
   Future<void> _refresh() => _presenter.loadJobs(_currentFilters());
+
+  Future<void> _openFilters() async {
+    if (!_filterMeta.isReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(AppStrings.loading)),
+      );
+      return;
+    }
+    final result = await FilterBottomSheet.show(
+      context,
+      current: _currentFilters(),
+      meta: _filterMeta,
+    );
+    if (result != null) {
+      setState(() => _filters = result);
+      _search();
+    }
+  }
 
   void _openJob(Job job) {
     Navigator.of(context).push(
@@ -117,12 +148,26 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
   }
 
   @override
+  void showFilterMeta(FilterMeta meta) {
+    if (mounted) setState(() => _filterMeta = meta);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text(AppStrings.jobsTitle),
         actions: [
+          IconButton(
+            icon: Badge(
+              isLabelVisible: _hasSheetFilters,
+              backgroundColor: AppColors.accent,
+              child: const Icon(Icons.tune),
+            ),
+            tooltip: AppStrings.filters,
+            onPressed: _openFilters,
+          ),
           IconButton(
             icon: const Icon(Icons.person_outline),
             tooltip: AppStrings.profile,
@@ -194,8 +239,14 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
                       ),
                     ),
                   ],
-                  onChanged: (value) =>
-                      setState(() => _selectedLocation = value),
+                  onChanged: (value) {
+                    setState(() {
+                      _filters = _filters.copyWith(
+                        locations: value == null ? const [] : [value],
+                      );
+                    });
+                    _search();
+                  },
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
@@ -221,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
               const Icon(Icons.sort, size: 18, color: AppColors.textSecondary),
               const SizedBox(width: AppSpacing.xs),
               DropdownButton<JobSort>(
-                value: _selectedSort,
+                value: _filters.sortBy,
                 underline: const SizedBox.shrink(),
                 items: JobSort.values
                     .map(
@@ -233,16 +284,18 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
                     .toList(),
                 onChanged: (sort) {
                   if (sort == null) return;
-                  setState(() => _selectedSort = sort);
+                  setState(() => _filters = _filters.copyWith(sortBy: sort));
                   _search();
                 },
               ),
               const Spacer(),
               FilterChip(
                 label: const Text(AppStrings.remote),
-                selected: _remoteOnly,
+                selected: _filters.remote,
                 onSelected: (selected) {
-                  setState(() => _remoteOnly = selected);
+                  setState(
+                    () => _filters = _filters.copyWith(remote: selected),
+                  );
                   _search();
                 },
                 selectedColor: AppColors.primary.withValues(alpha: 0.15),

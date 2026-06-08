@@ -75,6 +75,17 @@ class AppStrings {
   // Company
   static const String companyJobs = 'فرصت‌های شغلی این شرکت';
 
+  // Filters
+  static const String filters = 'فیلترها';
+  static const String category = 'دسته‌بندی شغلی';
+  static const String jobType = 'نوع همکاری';
+  static const String benefits = 'مزایا و امکانات';
+  static const String minSalary = 'حداقل حقوق';
+  static const String internship = 'فقط موقعیت‌های کارآموزی';
+  static const String applyFilters = 'اعمال فیلتر';
+  static const String clearFilters = 'حذف فیلترها';
+  static const String anyOption = 'همه';
+
   // Generic states
   static const String retry = 'تلاش دوباره';
   static const String loading = 'در حال بارگذاری...';

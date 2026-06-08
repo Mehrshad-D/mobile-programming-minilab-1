@@ -235,6 +235,57 @@ class MockApiService implements ApiService {
     return const ['تهران', 'اصفهان', 'شیراز', 'مشهد', 'البرز'];
   }
 
+  @override
+  Future<List<String>> getJobTypes() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return const ['تمام‌وقت', 'پاره‌وقت', 'کارآموزی'];
+  }
+
+  @override
+  Future<List<String>> getWorkExperiences() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return const [
+      'بدون نیاز به سابقه',
+      'کمتر از سه سال',
+      'دو تا چهار سال',
+      'بیش از سه سال',
+    ];
+  }
+
+  @override
+  Future<List<({String label, int value})>> getSalaryRanges() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return const [
+      (label: 'از ۲۰ میلیون تومان', value: 20000000),
+      (label: 'از ۳۰ میلیون تومان', value: 30000000),
+      (label: 'از ۴۰ میلیون تومان', value: 40000000),
+      (label: 'از ۵۰ میلیون تومان', value: 50000000),
+      (label: 'از ۶۰ میلیون تومان', value: 60000000),
+    ];
+  }
+
+  @override
+  Future<List<({String key, String label})>> getBenefits() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return const [
+      (key: JobBenefit.usd, label: 'پرداخت دلاری'),
+      (key: JobBenefit.supplementaryInsurance, label: 'بیمه تکمیلی'),
+      (key: JobBenefit.flexibleHours, label: 'ساعت کاری شناور'),
+      (key: JobBenefit.loan, label: 'وام'),
+      (key: JobBenefit.bonus, label: 'پاداش'),
+      (key: JobBenefit.commission, label: 'پورسانت'),
+      (key: JobBenefit.esop, label: 'سهام تشویقی'),
+      (key: JobBenefit.project, label: 'پروژه‌ای'),
+      (key: JobBenefit.promotion, label: 'ترفیع شغلی'),
+      (key: JobBenefit.overtimeOffering, label: 'اضافه‌کاری'),
+      (key: JobBenefit.afternoonShift, label: 'شیفت عصر'),
+      (key: JobBenefit.partTime, label: 'پاره‌وقت'),
+      (key: JobBenefit.businessTrip, label: 'سفر کاری'),
+      (key: JobBenefit.militaryPlacement, label: 'امریه سربازی'),
+      (key: JobBenefit.disabilitySupport, label: 'استخدام معلولین'),
+    ];
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
