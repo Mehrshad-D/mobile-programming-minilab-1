@@ -12,6 +12,7 @@ import '../models/user.dart';
 import 'api_service.dart';
 import 'dart:io';
 import 'storage_service.dart';
+import '../models/resume.dart';
 
 
 /// In-app implementation of [ApiService].

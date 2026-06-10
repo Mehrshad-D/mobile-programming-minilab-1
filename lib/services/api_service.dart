@@ -10,6 +10,7 @@ import '../models/login_request.dart';
 import '../models/province.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
+import '../models/resume.dart';
 
 /// Abstract API service interface.
 /// Views never call this directly — they go through presenters.
