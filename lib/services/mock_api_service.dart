@@ -468,6 +468,318 @@ Future<User> signup(SignupRequest request) async {
   }
 
   // ---------------------------------------------------------------------------
+  // Resume / CV Builder (Section 5.4)
+  // ---------------------------------------------------------------------------
+
+  Resume? _currentResume;
+
+  @override
+  Future<Resume> getResume() async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای مشاهده رزومه ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    if (_currentResume == null) {
+      // Create default resume
+      _currentResume = Resume(
+        id: 'resume_${_currentUser!.id}',
+        name: _currentUser!.name,
+        email: _currentUser!.email,
+        phone: _currentUser!.phone,
+        about: _currentUser!.about,
+        slug: '${_currentUser!.name.toLowerCase().replaceAll(' ', '-')}-resume',
+      );
+    }
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> createResume(Resume resume) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای ساخت رزومه ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    _currentResume = resume.copyWith(
+      id: 'resume_${_currentUser!.id}',
+      score: resume.calculateScore(),
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> updateResume(Resume resume) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null || _currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    _currentResume = resume.copyWith(
+      score: resume.calculateScore(),
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> updatePersonalInfo(Map<String, dynamic> personalInfo) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    _currentResume = _currentResume!.copyWith(
+      name: personalInfo['name'] ?? _currentResume!.name,
+      birthDate: personalInfo['birth_date'] ?? _currentResume!.birthDate,
+      gender: personalInfo['gender'] ?? _currentResume!.gender,
+      militaryStatus: personalInfo['military_status'] ?? _currentResume!.militaryStatus,
+      email: personalInfo['email'] ?? _currentResume!.email,
+      phone: personalInfo['phone'] ?? _currentResume!.phone,
+      about: personalInfo['about'] ?? _currentResume!.about,
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> addEducation(Education education) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    final newEducation = Education(
+      id: 'edu_${DateTime.now().millisecondsSinceEpoch}',
+      degree: education.degree,
+      field: education.field,
+      university: education.university,
+      startYear: education.startYear,
+      endYear: education.endYear,
+      isCurrent: education.isCurrent,
+    );
+    
+    final updatedEducation = [..._currentResume!.education, newEducation];
+    _currentResume = _currentResume!.copyWith(
+      education: updatedEducation,
+      score: _currentResume!.calculateScore(),
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> updateEducation(String educationId, Education education) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    final updatedEducation = _currentResume!.education.map((e) {
+      if (e.id == educationId) {
+        return Education(
+          id: e.id,
+          degree: education.degree,
+          field: education.field,
+          university: education.university,
+          startYear: education.startYear,
+          endYear: education.endYear,
+          isCurrent: education.isCurrent,
+        );
+      }
+      return e;
+    }).toList();
+    
+    _currentResume = _currentResume!.copyWith(
+      education: updatedEducation,
+      score: _currentResume!.calculateScore(),
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<void> deleteEducation(String educationId) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    final updatedEducation = _currentResume!.education
+        .where((e) => e.id != educationId)
+        .toList();
+    
+    _currentResume = _currentResume!.copyWith(
+      education: updatedEducation,
+      score: _currentResume!.calculateScore(),
+    );
+  }
+
+  @override
+  Future<Resume> addExperience(WorkExperience experience) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    final newExperience = WorkExperience(
+      id: 'exp_${DateTime.now().millisecondsSinceEpoch}',
+      company: experience.company,
+      position: experience.position,
+      description: experience.description,
+      startYear: experience.startYear,
+      endYear: experience.endYear,
+      isCurrent: experience.isCurrent,
+    );
+    
+    final updatedExperiences = [..._currentResume!.experiences, newExperience];
+    _currentResume = _currentResume!.copyWith(
+      experiences: updatedExperiences,
+      score: _currentResume!.calculateScore(),
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> updateExperience(String experienceId, WorkExperience experience) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    final updatedExperiences = _currentResume!.experiences.map((e) {
+      if (e.id == experienceId) {
+        return WorkExperience(
+          id: e.id,
+          company: experience.company,
+          position: experience.position,
+          description: experience.description,
+          startYear: experience.startYear,
+          endYear: experience.endYear,
+          isCurrent: experience.isCurrent,
+        );
+      }
+      return e;
+    }).toList();
+    
+    _currentResume = _currentResume!.copyWith(
+      experiences: updatedExperiences,
+      score: _currentResume!.calculateScore(),
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<void> deleteExperience(String experienceId) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    final updatedExperiences = _currentResume!.experiences
+        .where((e) => e.id != experienceId)
+        .toList();
+    
+    _currentResume = _currentResume!.copyWith(
+      experiences: updatedExperiences,
+      score: _currentResume!.calculateScore(),
+    );
+  }
+
+  @override
+  Future<Resume> updateLanguages(List<Language> languages) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    _currentResume = _currentResume!.copyWith(
+      languages: languages,
+      score: _currentResume!.calculateScore(),
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> updateSkills(List<String> skills) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    _currentResume = _currentResume!.copyWith(
+      skills: skills,
+      score: _currentResume!.calculateScore(),
+    );
+    
+    return _currentResume!;
+  }
+
+  @override
+  Future<int> getResumeScore() async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      return 0;
+    }
+    
+    return _currentResume!.calculateScore();
+  }
+
+  @override
+  Future<String> uploadResumeFile(File file) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای آپلود رزومه ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    // Mock: return fake URL
+    final fakeUrl = 'https://example.com/resumes/${_currentUser!.id}/resume.pdf';
+    return fakeUrl;
+  }
+
+  @override
+  Future<void> togglePublicity(bool isPublic) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    _currentResume = _currentResume!.copyWith(isPublic: isPublic);
+  }
+
+  @override
+  Future<void> toggleSearchStatus(bool isSearchable) async {
+    await Future.delayed(_latency);
+    
+    if (_currentResume == null) {
+      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    
+    _currentResume = _currentResume!.copyWith(isSearchable: isSearchable);
+  }
+
+
+  // ---------------------------------------------------------------------------
   // Seed data
   // ---------------------------------------------------------------------------
 
