@@ -1,8 +1,9 @@
+// Replace the entire EditProfileScreen with this version:
+
 import 'package:flutter/material.dart';
 import '../models/user.dart';
 import '../utils/constants.dart';
 import '../widgets/custom_button.dart';
-import '../widgets/custom_text_field.dart';
 import '../widgets/loading_widget.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -34,7 +35,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final List<String> _provinces = [
     'تهران', 'اصفهان', 'شیراز', 'مشهد', 'البرز', 'خوزستان', 'گیلان'
   ];
-  final List<String> _genders = ['مرد', 'زن', 'ترجیح میدهم نگویم'];
 
   @override
   void initState() {
@@ -129,39 +129,47 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   if (_errorMessage != null) const SizedBox(height: AppSpacing.md),
                   
-                  CustomTextField(
-                    label: 'نام کامل',
+                  // Name field
+                  TextField(
                     controller: _nameController,
-                    prefixIcon: Icons.person_outline,
-                    hint: 'نام و نام خانوادگی',
+                    decoration: const InputDecoration(
+                      labelText: 'نام کامل',
+                      prefixIcon: Icon(Icons.person_outline),
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   
-                  CustomTextField(
-                    label: 'شماره تلفن',
+                  // Phone field
+                  TextField(
                     controller: _phoneController,
-                    prefixIcon: Icons.phone_outlined,
-                    hint: 'مثال: ۰۹۱۲۱۲۳۴۵۶۷',
+                    decoration: const InputDecoration(
+                      labelText: 'شماره تلفن',
+                      prefixIcon: Icon(Icons.phone_outlined),
+                      border: OutlineInputBorder(),
+                    ),
                     keyboardType: TextInputType.phone,
                   ),
                   const SizedBox(height: AppSpacing.md),
                   
-                  CustomTextField(
-                    label: 'عنوان شغلی',
+                  // Headline field
+                  TextField(
                     controller: _headlineController,
-                    prefixIcon: Icons.work_outline,
-                    hint: 'مثال: توسعه‌دهنده فلاتر',
+                    decoration: const InputDecoration(
+                      labelText: 'عنوان شغلی',
+                      prefixIcon: Icon(Icons.work_outline),
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   
+                  // Province dropdown
                   DropdownButtonFormField<String>(
-                    value: _provinceController.text,
-                    decoration: InputDecoration(
+                    value: _provinceController.text.isNotEmpty ? _provinceController.text : null,
+                    decoration: const InputDecoration(
                       labelText: 'استان',
-                      prefixIcon: const Icon(Icons.location_on_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppSpacing.radius),
-                      ),
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                      border: OutlineInputBorder(),
                     ),
                     items: _provinces.map((province) {
                       return DropdownMenuItem(
@@ -177,35 +185,53 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                   const SizedBox(height: AppSpacing.md),
                   
-                  CustomTextField(
-                    label: 'شهر',
+                  // City field
+                  TextField(
                     controller: _cityController,
-                    prefixIcon: Icons.location_city_outlined,
-                    hint: 'شهر محل سکونت',
+                    decoration: const InputDecoration(
+                      labelText: 'شهر',
+                      prefixIcon: Icon(Icons.location_city_outlined),
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   
-                  CustomTextField(
-                    label: 'تاریخ تولد',
+                  // Birth date field
+                  TextField(
                     controller: _birthDateController,
-                    prefixIcon: Icons.cake_outlined,
-                    hint: 'مثال: ۱۳۷۰/۰۵/۱۵',
+                    decoration: const InputDecoration(
+                      labelText: 'تاریخ تولد',
+                      prefixIcon: Icon(Icons.cake_outlined),
+                      hintText: 'مثال: ۱۳۷۰/۰۵/۱۵',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   
-                  CustomTextField(
-                    label: 'درباره من',
+                  // About field (multi-line)
+                  TextField(
                     controller: _aboutController,
-                    prefixIcon: Icons.info_outline,
-                    hint: 'توضیحات کوتاه درباره خودتان',
+                    decoration: const InputDecoration(
+                      labelText: 'درباره من',
+                      prefixIcon: Icon(Icons.info_outline),
+                      border: OutlineInputBorder(),
+                    ),
                     maxLines: 4,
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   
-                  CustomButton(
-                    text: 'ذخیره تغییرات',
+                  // Save button - using ElevatedButton instead of CustomButton
+                  ElevatedButton(
                     onPressed: _save,
-                    isExpanded: true,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppSpacing.radius),
+                      ),
+                    ),
+                    child: const Text('ذخیره تغییرات'),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   

@@ -1,3 +1,14 @@
+/// Custom exception for API errors
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+
+  const ApiException(this.message, {this.statusCode});
+
+  @override
+  String toString() => 'ApiException: $message (Status: $statusCode)';
+}
+
 /// Pagination metadata that mirrors the Mock API response shape.
 class PageMeta {
   final int currentPage;

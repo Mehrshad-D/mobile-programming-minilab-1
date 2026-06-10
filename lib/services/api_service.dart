@@ -1,3 +1,4 @@
+import 'dart:io';
 import '../models/api_response.dart';
 import '../models/company.dart';
 import '../models/job.dart';
@@ -10,74 +11,52 @@ import '../models/province.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
 
-/// Thrown for any handled API failure so presenters can show a clean message.
-class ApiException implements Exception {
-  final String message;
-  final int? statusCode;
-
-  const ApiException(this.message, {this.statusCode});
-
-  @override
-  String toString() => message;
-}
-
-/// Abstract contract for the data layer.
-///
-/// Presenters depend only on this interface, never on a concrete
-/// implementation. That keeps the app testable and lets us swap the in-app
-/// mock for a real HTTP client without touching the UI or presenters.
+/// Abstract API service interface.
+/// Views never call this directly — they go through presenters.
 abstract class ApiService {
+  // ---------------------------------------------------------------------------
+  // Authentication
+  // ---------------------------------------------------------------------------
   Future<User> login(LoginRequest request);
-
   Future<User> signup(SignupRequest request);
-
   Future<void> logout();
-
   User? get currentUser;
 
-  /// Search jobs. All `GET /jobs` parameters from section 5.1 are carried by
-  /// [JobFilters], including paging via [JobFilters.page].
+  // ---------------------------------------------------------------------------
+  // Jobs
+  // ---------------------------------------------------------------------------
   Future<PaginatedResponse<Job>> getJobs(JobFilters filters);
-
   Future<Job> getJobById(String id);
-
   Future<Company> getCompanyBySlug(String slug);
-
   Future<PaginatedResponse<Job>> getCompanyJobs(String slug, {int page = 1});
 
+  // ---------------------------------------------------------------------------
+  // Profile & applications
+  // ---------------------------------------------------------------------------
   Future<User> getProfile();
-
   Future<List<Job>> getAppliedJobs();
+  Future<void> applyToJob(String jobId);
+  
+  // NEW METHODS:
+  Future<User> updateProfile(User user);
+  Future<String> uploadAvatar(File imageFile);
 
+  // ---------------------------------------------------------------------------
+  // Reference data (used by filters and meta endpoints)
+  // ---------------------------------------------------------------------------
   Future<List<String>> getCategories();
-
   Future<List<String>> getLocations();
-
   Future<List<String>> getJobTypes();
-
   Future<List<String>> getWorkExperiences();
-
   Future<List<({String label, int value})>> getSalaryRanges();
-
   Future<List<({String key, String label})>> getBenefits();
 
-  Future<void> applyToJob(String jobId);
-
-  // --- Section 5.2: Meta / Reference data ---
-
-  /// `GET /api/v10/job/categories`
+  // ---------------------------------------------------------------------------
+  // Section 5.2: Meta / Reference data
+  // ---------------------------------------------------------------------------
   Future<List<JobCategory>> getJobCategories();
-
-  /// `GET /api/v10/job_search_meta`
   Future<JobSearchMeta> getJobSearchMeta();
-
-  /// `GET /api/v10/region/province`
   Future<List<Province>> getProvinces();
-
-  /// `GET /api/v10/job-skills/search?q={query}`
   Future<List<JobSkill>> searchSkills(String query);
-
-  /// `GET /api/v10/utils/last-applied-job` — requires authentication.
-  /// Returns the most recently applied job, or `null` if none.
   Future<Job?> getLastAppliedJob();
 }

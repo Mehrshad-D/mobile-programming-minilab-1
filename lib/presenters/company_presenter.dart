@@ -2,6 +2,7 @@ import '../models/company.dart';
 import '../models/job.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
+import '../models/api_response.dart';
 
 /// Contract for the company screen.
 abstract class CompanyView {

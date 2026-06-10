@@ -3,6 +3,7 @@ import '../models/job.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
+import '../models/api_response.dart';
 
 /// Contract for the profile screen.
 abstract class ProfileView {

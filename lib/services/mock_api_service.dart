@@ -10,6 +10,8 @@ import '../models/province.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
 import 'api_service.dart';
+import 'dart:io';
+
 
 /// In-app implementation of [ApiService].
 ///
@@ -75,6 +77,52 @@ class MockApiService implements ApiService {
   // ---------------------------------------------------------------------------
   // Jobs
   // ---------------------------------------------------------------------------
+
+  @override
+  Future<User> updateProfile(User updatedUser) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای ویرایش پروفایل ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    // Update the current user with new values
+    _currentUser = _currentUser!.copyWith(
+      name: updatedUser.name,
+      phone: updatedUser.phone,
+      headline: updatedUser.headline,
+      city: updatedUser.city,
+      province: updatedUser.province,
+      about: updatedUser.about,
+      birthDate: updatedUser.birthDate,
+      gender: updatedUser.gender,
+      // Keep existing avatar URL
+      avatarUrl: _currentUser!.avatarUrl,
+    );
+    
+    return _currentUser!;
+  }
+
+  @override
+  Future<String> uploadAvatar(File imageFile) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای آپلود عکس ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    // Simulate file upload and get a URL
+    // In a real app, this would upload to a server
+    
+    // Generate a fake avatar URL (in real app, this would be the uploaded file path)
+    final fakeAvatarUrl = 'https://ui-avatars.com/api/?background=00bfa5&color=fff&name=${Uri.encodeComponent(_currentUser!.name)}&size=128';
+    
+    _currentUser = _currentUser!.copyWith(
+      avatarUrl: fakeAvatarUrl,
+    );
+    
+    return fakeAvatarUrl;
+  }
 
   @override
   Future<PaginatedResponse<Job>> getJobs(JobFilters filters) async {
@@ -163,7 +211,7 @@ class MockApiService implements ApiService {
     await Future.delayed(_latency);
     final matches = _jobs.where((j) => j.id == id).toList();
     if (matches.isEmpty) {
-      throw const ApiException('شغل مورد نظر یافت نشد', statusCode: 404);
+      throw ApiException('شغل مورد نظر یافت نشد', statusCode: 404);
     }
     return matches.first;
   }
@@ -173,7 +221,7 @@ class MockApiService implements ApiService {
     await Future.delayed(_latency);
     final matches = _companies.where((c) => c.slug == slug).toList();
     if (matches.isEmpty) {
-      throw const ApiException('شرکت مورد نظر یافت نشد', statusCode: 404);
+      throw ApiException('شرکت مورد نظر یافت نشد', statusCode: 404);
     }
     return matches.first;
   }
@@ -198,7 +246,7 @@ class MockApiService implements ApiService {
     await Future.delayed(_latency);
     final user = _currentUser;
     if (user == null) {
-      throw const ApiException('برای مشاهده پروفایل ابتدا وارد شوید',
+      throw ApiException('برای مشاهده پروفایل ابتدا وارد شوید',
           statusCode: 401);
     }
     return user;
@@ -332,7 +380,7 @@ class MockApiService implements ApiService {
   Future<Job?> getLastAppliedJob() async {
     await Future.delayed(_latency);
     if (_currentUser == null) {
-      throw const ApiException(
+      throw ApiException(
         'برای مشاهده آخرین درخواست ابتدا وارد شوید',
         statusCode: 401,
       );

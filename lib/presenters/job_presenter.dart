@@ -3,6 +3,7 @@ import '../models/job.dart';
 import '../models/job_filters.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
+import '../models/api_response.dart';
 
 /// Contract for the home screen (job list + search + pagination).
 abstract class JobListView {

@@ -3,6 +3,7 @@ import '../models/signup_request.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
+import '../models/api_response.dart';
 
 /// Contract the login/sign-up screens implement so the presenter can drive
 /// them without knowing anything about Flutter widgets.
