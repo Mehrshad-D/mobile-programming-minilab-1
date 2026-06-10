@@ -11,6 +11,7 @@ import '../models/signup_request.dart';
 import '../models/user.dart';
 import 'api_service.dart';
 import 'dart:io';
+import 'storage_service.dart';
 
 
 /// In-app implementation of [ApiService].
@@ -20,10 +21,9 @@ import 'dart:io';
 /// Implemented as a singleton so the "logged-in" session and applied jobs
 /// persist while navigating between screens.
 class MockApiService implements ApiService {
-  MockApiService._internal();
-
+  // Singleton instance
   static final MockApiService _instance = MockApiService._internal();
-
+  
   factory MockApiService() => _instance;
 
   static const Duration _latency = Duration(milliseconds: 700);
@@ -31,6 +31,19 @@ class MockApiService implements ApiService {
 
   User? _currentUser;
   final Set<String> _appliedJobIds = <String>{};
+
+  // Private constructor
+  MockApiService._internal() {
+    _loadPersistedUser();
+  }
+
+  Future<void> _loadPersistedUser() async {
+    _currentUser = await StorageService.getCurrentUser();
+    if (_currentUser != null) {
+      final jobIds = await StorageService.getAppliedJobs(_currentUser!.id.toString());
+      _appliedJobIds.addAll(jobIds);
+    }
+  }
 
   @override
   User? get currentUser => _currentUser;
@@ -42,28 +55,49 @@ class MockApiService implements ApiService {
   @override
   Future<User> login(LoginRequest request) async {
     await Future.delayed(_latency);
-    _currentUser = User(
-      id: 1,
-      name: 'کاربر آزمایشی',
-      email: request.email,
-      phone: '۰۹۱۲۰۰۰۰۰۰۰',
-      headline: 'توسعه‌دهنده موبایل',
-      city: 'تهران',
-      about: 'علاقه‌مند به توسعه اپلیکیشن‌های موبایل با Flutter و معماری تمیز.',
-    );
+    
+    // Validate credentials
+    final user = await StorageService.validateLogin(request.email, request.password);
+    
+    if (user == null) {
+      throw ApiException('ایمیل یا رمز عبور اشتباه است', statusCode: 401);
+    }
+    
+    _currentUser = user;
+    await StorageService.saveCurrentUser(user);
+    
+    // Load applied jobs
+    final jobIds = await StorageService.getAppliedJobs(user.id.toString());
+    _appliedJobIds.clear();
+    _appliedJobIds.addAll(jobIds);
+    
     return _currentUser!;
   }
 
   @override
   Future<User> signup(SignupRequest request) async {
     await Future.delayed(_latency);
-    _currentUser = User(
-      id: 2,
+    
+    // Create new user
+    final newUser = User(
+      id: DateTime.now().millisecondsSinceEpoch,
       name: request.name,
       email: request.email,
+      phone: request.phone,
       city: 'تهران',
       headline: 'کارجوی تازه‌وارد',
     );
+    
+    // Register user
+    final success = await StorageService.registerUser(request.email, newUser);
+    
+    if (!success) {
+      throw ApiException('این ایمیل قبلاً ثبت نام کرده است', statusCode: 409);
+    }
+    
+    _currentUser = newUser;
+    await StorageService.saveCurrentUser(newUser);
+    
     return _currentUser!;
   }
 
@@ -72,11 +106,22 @@ class MockApiService implements ApiService {
     await Future.delayed(const Duration(milliseconds: 300));
     _currentUser = null;
     _appliedJobIds.clear();
+    await StorageService.clearCurrentUser();
   }
 
   // ---------------------------------------------------------------------------
   // Jobs
   // ---------------------------------------------------------------------------
+
+  @override
+  Future<User> getProfile() async {
+    await Future.delayed(_latency);
+    final user = _currentUser;
+    if (user == null) {
+      throw ApiException('برای مشاهده پروفایل ابتدا وارد شوید', statusCode: 401);
+    }
+    return user;
+  }
 
   @override
   Future<User> updateProfile(User updatedUser) async {
@@ -86,19 +131,13 @@ class MockApiService implements ApiService {
       throw ApiException('برای ویرایش پروفایل ابتدا وارد شوید', statusCode: 401);
     }
     
-    // Update the current user with new values
-    _currentUser = _currentUser!.copyWith(
-      name: updatedUser.name,
-      phone: updatedUser.phone,
-      headline: updatedUser.headline,
-      city: updatedUser.city,
-      province: updatedUser.province,
-      about: updatedUser.about,
-      birthDate: updatedUser.birthDate,
-      gender: updatedUser.gender,
-      // Keep existing avatar URL
-      avatarUrl: _currentUser!.avatarUrl,
-    );
+    _currentUser = updatedUser;
+    await StorageService.saveCurrentUser(updatedUser);
+    
+    // Update in registered users list
+    final users = await StorageService.getRegisteredUsers();
+    users[updatedUser.email] = updatedUser;
+    await StorageService.saveRegisteredUsers(users);
     
     return _currentUser!;
   }
@@ -111,15 +150,12 @@ class MockApiService implements ApiService {
       throw ApiException('برای آپلود عکس ابتدا وارد شوید', statusCode: 401);
     }
     
-    // Simulate file upload and get a URL
-    // In a real app, this would upload to a server
+    // In a real app, you'd upload the file to a server
+    // For mock, we'll use UI Avatars API with the user's name
+    final fakeAvatarUrl = 'https://ui-avatars.com/api/?background=00bfa5&color=fff&name=${Uri.encodeComponent(_currentUser!.name)}&size=128&rounded=true';
     
-    // Generate a fake avatar URL (in real app, this would be the uploaded file path)
-    final fakeAvatarUrl = 'https://ui-avatars.com/api/?background=00bfa5&color=fff&name=${Uri.encodeComponent(_currentUser!.name)}&size=128';
-    
-    _currentUser = _currentUser!.copyWith(
-      avatarUrl: fakeAvatarUrl,
-    );
+    _currentUser = _currentUser!.copyWith(avatarUrl: fakeAvatarUrl);
+    await StorageService.saveCurrentUser(_currentUser!);
     
     return fakeAvatarUrl;
   }
@@ -238,30 +274,23 @@ class MockApiService implements ApiService {
   }
 
   // ---------------------------------------------------------------------------
-  // Profile & applications
+  // Applied Jobs with persistence
   // ---------------------------------------------------------------------------
-
-  @override
-  Future<User> getProfile() async {
-    await Future.delayed(_latency);
-    final user = _currentUser;
-    if (user == null) {
-      throw ApiException('برای مشاهده پروفایل ابتدا وارد شوید',
-          statusCode: 401);
-    }
-    return user;
-  }
-
   @override
   Future<List<Job>> getAppliedJobs() async {
     await Future.delayed(_latency);
+    if (_currentUser == null) return [];
     return _jobs.where((j) => _appliedJobIds.contains(j.id)).toList();
   }
 
   @override
   Future<void> applyToJob(String jobId) async {
     await Future.delayed(_latency);
+    if (_currentUser == null) {
+      throw ApiException('برای ثبت درخواست ابتدا وارد شوید', statusCode: 401);
+    }
     _appliedJobIds.add(jobId);
+    await StorageService.addAppliedJob(_currentUser!.id.toString(), jobId);
   }
 
   // ---------------------------------------------------------------------------
