@@ -56,7 +56,7 @@ class MockApiService implements ApiService {
   Future<User> login(LoginRequest request) async {
     await Future.delayed(_latency);
     
-    // Validate credentials
+    // Validate credentials with the stored password
     final user = await StorageService.validateLogin(request.email, request.password);
     
     if (user == null) {
@@ -74,32 +74,41 @@ class MockApiService implements ApiService {
     return _currentUser!;
   }
 
-  @override
-  Future<User> signup(SignupRequest request) async {
-    await Future.delayed(_latency);
-    
-    // Create new user
-    final newUser = User(
-      id: DateTime.now().millisecondsSinceEpoch,
-      name: request.name,
-      email: request.email,
-      phone: request.phone,
-      city: 'تهران',
-      headline: 'کارجوی تازه‌وارد',
-    );
-    
-    // Register user
-    final success = await StorageService.registerUser(request.email, newUser);
-    
-    if (!success) {
-      throw ApiException('این ایمیل قبلاً ثبت نام کرده است', statusCode: 409);
-    }
-    
-    _currentUser = newUser;
-    await StorageService.saveCurrentUser(newUser);
-    
-    return _currentUser!;
+@override
+Future<User> signup(SignupRequest request) async {
+  await Future.delayed(_latency);
+  
+  // Validate password is not empty
+  if (request.password.isEmpty) {
+    throw ApiException('رمز عبور نمی‌تواند خالی باشد', statusCode: 400);
   }
+  
+  // Create new user
+  final newUser = User(
+    id: DateTime.now().millisecondsSinceEpoch,
+    name: request.name,
+    email: request.email,
+    phone: request.phone,
+    city: 'تهران',
+    headline: 'کارجوی تازه‌وارد',
+  );
+  
+  // Register user with the actual password they provided
+  final success = await StorageService.registerUser(
+    request.email, 
+    newUser, 
+    request.password  // Store the actual password
+  );
+  
+  if (!success) {
+    throw ApiException('این ایمیل قبلاً ثبت نام کرده است', statusCode: 409);
+  }
+  
+  _currentUser = newUser;
+  await StorageService.saveCurrentUser(newUser);
+  
+  return _currentUser!;
+}
 
   @override
   Future<void> logout() async {
@@ -134,10 +143,8 @@ class MockApiService implements ApiService {
     _currentUser = updatedUser;
     await StorageService.saveCurrentUser(updatedUser);
     
-    // Update in registered users list
-    final users = await StorageService.getRegisteredUsers();
-    users[updatedUser.email] = updatedUser;
-    await StorageService.saveRegisteredUsers(users);
+    // Update in registered users list (password stays the same)
+    await StorageService.updateRegisteredUser(updatedUser);
     
     return _currentUser!;
   }

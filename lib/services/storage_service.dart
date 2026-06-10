@@ -38,53 +38,67 @@ class StorageService {
   }
 
   // ---------------------------------------------------------------------------
-  // Registered users (for validation)
+  // Registered users (for validation) - NOW WITH PASSWORD STORAGE
   // ---------------------------------------------------------------------------
 
-  /// Save all registered users
-  static Future<void> saveRegisteredUsers(Map<String, User> users) async {
+  /// Structure to store user with password
+  static const String _keyUserPassword = '_password';
+  
+  /// Save all registered users with passwords
+  static Future<void> saveRegisteredUsers(Map<String, Map<String, dynamic>> usersWithPasswords) async {
     final prefs = await _getPrefs();
-    final usersMap = <String, dynamic>{};
-    for (final entry in users.entries) {
-      usersMap[entry.key] = entry.value.toJson();
-    }
-    await prefs.setString(_keyRegisteredUsers, jsonEncode(usersMap));
+    await prefs.setString(_keyRegisteredUsers, jsonEncode(usersWithPasswords));
   }
 
-  /// Get all registered users
-  static Future<Map<String, User>> getRegisteredUsers() async {
+  /// Get all registered users with their passwords
+  static Future<Map<String, Map<String, dynamic>>> getRegisteredUsersWithPasswords() async {
     final prefs = await _getPrefs();
     final usersJson = prefs.getString(_keyRegisteredUsers);
     if (usersJson == null) return {};
     
-    final Map<String, dynamic> decoded = jsonDecode(usersJson);
-    final Map<String, User> result = {};
-    for (final entry in decoded.entries) {
-      result[entry.key] = User.fromJson(entry.value as Map<String, dynamic>);
-    }
-    return result;
+    return (jsonDecode(usersJson) as Map<String, dynamic>).map(
+      (key, value) => MapEntry(key, value as Map<String, dynamic>)
+    );
   }
 
-  /// Register a new user
-  static Future<bool> registerUser(String email, User user) async {
-    final users = await getRegisteredUsers();
+  /// Register a new user with their password
+  static Future<bool> registerUser(String email, User user, String password) async {
+    final users = await getRegisteredUsersWithPasswords();
     if (users.containsKey(email)) {
       return false; // User already exists
     }
-    users[email] = user;
+    
+    users[email] = {
+      'user': user.toJson(),
+      'password': password, // Store the actual password
+    };
+    
     await saveRegisteredUsers(users);
     return true;
   }
 
-  /// Validate login credentials
+  /// Validate login credentials with actual password
   static Future<User?> validateLogin(String email, String password) async {
-    final users = await getRegisteredUsers();
-    final user = users[email];
-    // In a real app, you'd hash passwords. For mock, check password == email
-    if (user != null && password == '123456') {
-      return user;
+    final users = await getRegisteredUsersWithPasswords();
+    final userData = users[email];
+    
+    if (userData != null && userData['password'] == password) {
+      return User.fromJson(userData['user'] as Map<String, dynamic>);
     }
     return null;
+  }
+
+  /// Update user in registered users list (keep password unchanged)
+  static Future<void> updateRegisteredUser(User user) async {
+    final users = await getRegisteredUsersWithPasswords();
+    if (users.containsKey(user.email)) {
+      final existingPassword = users[user.email]!['password'];
+      users[user.email] = {
+        'user': user.toJson(),
+        'password': existingPassword,
+      };
+      await saveRegisteredUsers(users);
+    }
   }
 
   // ---------------------------------------------------------------------------
