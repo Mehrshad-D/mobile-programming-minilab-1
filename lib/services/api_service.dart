@@ -59,4 +59,26 @@ abstract class ApiService {
   Future<List<Province>> getProvinces();
   Future<List<JobSkill>> searchSkills(String query);
   Future<Job?> getLastAppliedJob();
+
+
+
+  // ---------------------------------------------------------------------------
+  // Resume / CV Builder (Section 5.4)
+  // ---------------------------------------------------------------------------
+  Future<Resume> getResume();
+  Future<Resume> createResume(Resume resume);
+  Future<Resume> updateResume(Resume resume);
+  Future<Resume> updatePersonalInfo(Map<String, dynamic> personalInfo);
+  Future<Resume> addEducation(Education education);
+  Future<Resume> updateEducation(String educationId, Education education);
+  Future<void> deleteEducation(String educationId);
+  Future<Resume> addExperience(WorkExperience experience);
+  Future<Resume> updateExperience(String experienceId, WorkExperience experience);
+  Future<void> deleteExperience(String experienceId);
+  Future<Resume> updateLanguages(List<Language> languages);
+  Future<Resume> updateSkills(List<String> skills);
+  Future<int> getResumeScore();
+  Future<String> uploadResumeFile(File file);
+  Future<void> togglePublicity(bool isPublic);
+  Future<void> toggleSearchStatus(bool isSearchable);
 }
