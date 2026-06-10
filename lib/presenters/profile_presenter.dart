@@ -1,3 +1,4 @@
+import 'dart:io';
 import '../models/job.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
@@ -10,6 +11,8 @@ abstract class ProfileView {
   void showError(String message);
   void showProfile(User user, List<Job> appliedJobs);
   void onLoggedOut();
+  void onProfileUpdated(User updatedUser);
+  void onAvatarUploaded(String avatarUrl);
 }
 
 /// Loads the user's profile together with their applied jobs and handles logout.
@@ -29,6 +32,34 @@ class ProfilePresenter {
       _view.showError(e.message);
     } catch (_) {
       _view.showError(AppStrings.networkError);
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  Future<void> updateProfile(User updatedUser) async {
+    _view.showLoading();
+    try {
+      final savedUser = await _api.updateProfile(updatedUser);
+      _view.onProfileUpdated(savedUser);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError(AppStrings.genericError);
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  Future<void> uploadAvatar(File imageFile) async {
+    _view.showLoading();
+    try {
+      final avatarUrl = await _api.uploadAvatar(imageFile);
+      _view.onAvatarUploaded(avatarUrl);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در آپلود عکس');
     } finally {
       _view.hideLoading();
     }
