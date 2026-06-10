@@ -8,6 +8,9 @@ class User {
   final String? city;
   final String? about;
   final String? avatarUrl;
+  final String? province;
+  final String? birthDate;
+  final String? gender;
 
   const User({
     required this.id,
@@ -18,7 +21,39 @@ class User {
     this.city,
     this.about,
     this.avatarUrl,
+    this.province,
+    this.birthDate,
+    this.gender,
   });
+
+  /// Creates a copy of this user with updated fields
+  User copyWith({
+    int? id,
+    String? name,
+    String? email,
+    String? phone,
+    String? headline,
+    String? city,
+    String? about,
+    String? avatarUrl,
+    String? province,
+    String? birthDate,
+    String? gender,
+  }) {
+    return User(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      headline: headline ?? this.headline,
+      city: city ?? this.city,
+      about: about ?? this.about,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      province: province ?? this.province,
+      birthDate: birthDate ?? this.birthDate,
+      gender: gender ?? this.gender,
+    );
+  }
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
@@ -30,6 +65,9 @@ class User {
       city: json['city'] as String?,
       about: json['about'] as String?,
       avatarUrl: json['avatar_url'] as String?,
+      province: json['province'] as String?,
+      birthDate: json['birth_date'] as String?,
+      gender: json['gender'] as String?,
     );
   }
 
@@ -43,6 +81,17 @@ class User {
       'city': city,
       'about': about,
       'avatar_url': avatarUrl,
+      'province': province,
+      'birth_date': birthDate,
+      'gender': gender,
     };
+  }
+
+  /// Returns initials for avatar fallback
+  String get initials {
+    final parts = name.trim().split(' ');
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts[0][0];
+    return '${parts[0][0]}${parts[1][0]}';
   }
 }
