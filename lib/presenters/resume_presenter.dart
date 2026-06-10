@@ -2,6 +2,7 @@ import 'dart:io';
 import '../models/resume.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
+import '../models/api_response.dart';
 
 /// Contract for the resume screen
 abstract class ResumeView {

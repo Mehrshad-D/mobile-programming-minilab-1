@@ -11,6 +11,7 @@ import '../widgets/loading_widget.dart';
 import 'edit_profile_screen.dart';
 import 'job_detail_screen.dart';
 import 'login_screen.dart';
+import 'resume_builder_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -206,6 +207,24 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
             ),
           ),
+
+          const SizedBox(height: AppSpacing.md),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ResumeBuilderScreen()),
+              );
+            },
+            icon: const Icon(Icons.description_outlined, size: 16),
+            label: const Text('ساخت رزومه'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+            ),
+          ),
+
         ],
       ),
     );
