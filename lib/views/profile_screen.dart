@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/job.dart';
+import '../models/resume.dart';
 import '../models/user.dart';
 import '../presenters/profile_presenter.dart';
 import '../services/mock_api_service.dart';
@@ -22,17 +23,39 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
   late final ProfilePresenter _presenter;
+  late final MockApiService _apiService;
 
   User? _user;
   List<Job> _appliedJobs = [];
+  Resume? _resume;
   bool _isLoading = false;
+  bool _isLoadingResume = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _presenter = ProfilePresenter(this, MockApiService());
+    _apiService = MockApiService();
+    _presenter = ProfilePresenter(this, _apiService);
     _presenter.loadProfile();
+    _loadResume();
+  }
+
+  Future<void> _loadResume() async {
+    setState(() => _isLoadingResume = true);
+    try {
+      final resume = await _apiService.getResume();
+      if (mounted) {
+        setState(() => _resume = resume);
+      }
+    } catch (e) {
+      // Resume might not exist yet, that's fine
+      if (mounted) {
+        setState(() => _resume = null);
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingResume = false);
+    }
   }
 
   // ---- ProfileView ----
@@ -73,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('پروفایل با موفقیت به‌روزرسانی شد')),
       );
-      _presenter.loadProfile(); // Reload applied jobs
+      _presenter.loadProfile();
     }
   }
 
@@ -141,6 +164,16 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
     await _presenter.uploadAvatar(image);
   }
 
+  void _openResumeBuilder() async {
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ResumeBuilderScreen()),
+    );
+    // Refresh resume after returning
+    if (result == true) {
+      await _loadResume();
+    }
+  }
+
   Widget _buildBody() {
     if (_isLoading) {
       return const LoadingWidget();
@@ -156,7 +189,10 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
       return const SizedBox.shrink();
     }
     return RefreshIndicator(
-      onRefresh: () => _presenter.loadProfile(),
+      onRefresh: () async {
+        await _presenter.loadProfile();
+        await _loadResume();
+      },
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
@@ -165,6 +201,13 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
             onAvatarPicked: _uploadAvatar,
           ),
           const SizedBox(height: AppSpacing.lg),
+          
+          // Resume Section
+          _buildResumeSection(),
+          
+          const SizedBox(height: AppSpacing.lg),
+          
+          // Applied Jobs Section
           const Text(
             AppStrings.appliedJobs,
             style: TextStyle(
@@ -197,6 +240,8 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
               ),
             ),
           const SizedBox(height: AppSpacing.lg),
+          
+          // Logout Button
           OutlinedButton.icon(
             onPressed: () => _showLogoutDialog(),
             icon: const Icon(Icons.logout),
@@ -207,24 +252,199 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
             ),
           ),
+        ],
+      ),
+    );
+  }
 
-          const SizedBox(height: AppSpacing.md),
-          OutlinedButton.icon(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ResumeBuilderScreen()),
-              );
-            },
-            icon: const Icon(Icons.description_outlined, size: 16),
-            label: const Text('ساخت رزومه'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md,
-                vertical: AppSpacing.sm,
-              ),
+  Widget _buildResumeSection() {
+    if (_isLoadingResume) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(AppSpacing.lg),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    if (_resume != null) {
+      // Resume exists - show preview and edit button
+      return Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radius),
+          side: const BorderSide(color: AppColors.primary, width: 1),
+        ),
+        child: InkWell(
+          onTap: _openResumeBuilder,
+          borderRadius: BorderRadius.circular(AppSpacing.radius),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(AppSpacing.radius),
+                      ),
+                      child: const Icon(
+                        Icons.description,
+                        color: AppColors.primary,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'رزومه من',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'امتیاز تکمیل: ${_resume!.score}%',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: AppSpacing.xs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(AppSpacing.radius),
+                      ),
+                      child: const Text(
+                        'ویرایش',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                
+                // Progress bar
+                LinearProgressIndicator(
+                  value: (_resume!.score / 100).clamp(0.0, 1.0),
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                  minHeight: 6,
+                ),
+                
+                const SizedBox(height: AppSpacing.sm),
+                
+                // Quick stats
+                Wrap(
+                  spacing: AppSpacing.md,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    _buildStatChip(
+                      icon: Icons.school,
+                      label: '${_resume!.education.length} تحصیلات',
+                    ),
+                    _buildStatChip(
+                      icon: Icons.work,
+                      label: '${_resume!.experiences.length} سابقه',
+                    ),
+                    _buildStatChip(
+                      icon: Icons.language,
+                      label: '${_resume!.languages.length} زبان',
+                    ),
+                    _buildStatChip(
+                      icon: Icons.code,
+                      label: '${_resume!.skills.length} مهارت',
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
+        ),
+      );
+    } else {
+      // No resume - show create button
+      return Card(
+        child: InkWell(
+          onTap: _openResumeBuilder,
+          borderRadius: BorderRadius.circular(AppSpacing.radius),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.description_outlined,
+                  size: 48,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                const Text(
+                  'رزومه حرفه‌ای خود را بسازید',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                const Text(
+                  'با تکمیل رزومه، شانس استخدام خود را افزایش دهید',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                ElevatedButton.icon(
+                  onPressed: _openResumeBuilder,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('ساخت رزومه'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+  }
 
+  Widget _buildStatChip({required IconData icon, required String label}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.textSecondary),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
         ],
       ),
     );
@@ -330,14 +550,12 @@ class _ProfileHeader extends StatelessWidget {
                     builder: (_) => EditProfileScreen(
                       user: user,
                       onSave: (updated) async {
-                        // This will be handled by parent
                         return updated;
                       },
                     ),
                   ),
                 ).then((result) {
                   if (result != null && context.mounted) {
-                    // Trigger refresh
                     (context.findAncestorStateOfType<_ProfileScreenState>()
                         ?._presenter
                         .updateProfile(result as User));
