@@ -488,6 +488,175 @@ Future<User> signup(SignupRequest request) async {
   }
   
   // ---------------------------------------------------------------------------
+  // Section 5.8: Utility
+  // ---------------------------------------------------------------------------
+
+  final List<FeedbackResult> _feedbacks = [];
+  final List<DeviceRegistration> _devices = [];
+  final Set<String> _seenNotifications = {};
+
+  @override
+  Future<EmailValidationResult> checkEmail(String email) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // Simple email validation regex
+    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    final isValid = emailRegex.hasMatch(email);
+    
+    String? domain;
+    if (isValid) {
+      domain = email.split('@').last;
+    }
+    
+    // Check for common disposable email domains
+    final disposableDomains = ['tempmail.com', '10minutemail.com', 'guerrillamail.com'];
+    final isDisposable = disposableDomains.contains(domain);
+    
+    return EmailValidationResult(
+      isValid: isValid,
+      message: isValid ? 'ایمیل معتبر است' : 'فرمت ایمیل صحیح نیست',
+      domain: domain,
+      isDisposable: isDisposable,
+    );
+  }
+
+  @override
+  Future<FeedbackResult> submitFeedback(FeedbackRequest feedback) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null && feedback.email == null) {
+      throw ApiException('برای ارسال بازخورد، لطفاً ایمیل خود را وارد کنید', statusCode: 400);
+    }
+    
+    final result = FeedbackResult(
+      id: 'fb_${DateTime.now().millisecondsSinceEpoch}',
+      status: 'received',
+      submittedAt: DateTime.now(),
+      trackingCode: 'TRK${DateTime.now().millisecondsSinceEpoch}',
+    );
+    
+    _feedbacks.add(result);
+    return result;
+  }
+
+  @override
+  Future<FeedbackResult> submitContact(ContactRequest contact) async {
+    await Future.delayed(_latency);
+    
+    if (contact.name.isEmpty || contact.email.isEmpty || contact.message.isEmpty) {
+      throw ApiException('لطفاً تمام فیلدهای ضروری را پر کنید', statusCode: 400);
+    }
+    
+    final result = FeedbackResult(
+      id: 'ct_${DateTime.now().millisecondsSinceEpoch}',
+      status: 'sent',
+      submittedAt: DateTime.now(),
+      trackingCode: 'CTK${DateTime.now().millisecondsSinceEpoch}',
+    );
+    
+    _feedbacks.add(result);
+    return result;
+  }
+
+  @override
+  Future<FeedbackResult> getFeedbackResult(String id) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    final result = _feedbacks.firstWhere(
+      (f) => f.id == id,
+      orElse: () => throw ApiException('بازخورد مورد نظر یافت نشد', statusCode: 404),
+    );
+    
+    return result;
+  }
+
+  @override
+  Future<void> registerDevice(DeviceRegistration device) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // Remove existing device with same ID
+    _devices.removeWhere((d) => d.deviceId == device.deviceId);
+    _devices.add(device);
+  }
+
+  @override
+  Future<void> registerFCMDevice(String fcmToken) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // In a real app, this would register with FCM
+    final deviceId = 'web_${DateTime.now().millisecondsSinceEpoch}';
+    final device = DeviceRegistration(
+      deviceId: deviceId,
+      fcmToken: fcmToken,
+      platform: 'web',
+    );
+    _devices.add(device);
+  }
+
+  @override
+  Future<List<ViolationReason>> getViolationReasons() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    return const [
+      ViolationReason(
+        id: '1',
+        title: 'اطلاعات نادرست',
+        description: 'آگهی حاوی اطلاعات نادرست یا گمراه‌کننده است',
+      ),
+      ViolationReason(
+        id: '2',
+        title: 'محتوای نامناسب',
+        description: 'آگهی حاوی محتوای توهین‌آمیز یا نامناسب است',
+      ),
+      ViolationReason(
+        id: '3',
+        title: 'کلاهبرداری',
+        description: 'این آگهی مشکوک به کلاهبرداری است',
+      ),
+      ViolationReason(
+        id: '4',
+        title: 'تکراری',
+        description: 'این آگهی چندین بار منتشر شده است',
+      ),
+      ViolationReason(
+        id: '5',
+        title: 'آگهی غیرمرتبط',
+        description: 'آگهی در دسته‌بندی اشتباه قرار گرفته است',
+      ),
+    ];
+  }
+
+  @override
+  Future<void> reportViolation(ViolationReport report) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای گزارش تخلف ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    // Verify job exists
+    final job = _jobs.firstWhere(
+      (j) => j.id == report.jobId,
+      orElse: () => throw ApiException('آگهی مورد نظر یافت نشد', statusCode: 404),
+    );
+    
+    // Report is stored (in real app, this would be saved)
+  }
+
+  @override
+  Future<void> markNotificationAsSeen(String notificationId) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    _seenNotifications.add(notificationId);
+  }
+
+  @override
+  Future<void> markAllNotificationsAsSeen() async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    // In a real app, this would mark all as seen
+  }
+
+
+  // ---------------------------------------------------------------------------
   // Section 5.2: Meta / Reference data
   // ---------------------------------------------------------------------------
 
