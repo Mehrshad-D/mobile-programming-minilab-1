@@ -106,4 +106,40 @@ class JobFilters {
 
     return params;
   }
+
+  /// Convert to JSON for storage
+  Map<String, dynamic> toJson() {
+    return {
+      'keywords': keywords,
+      'locations': locations,
+      'jobCategories': jobCategories,
+      'jobTypes': jobTypes,
+      'remote': remote,
+      'internship': internship,
+      'benefits': benefits.toList(),
+      'salaryMin': salaryMin,
+      'workExperiences': workExperiences,
+      'sortBy': sortBy.name,
+      'page': page,
+    };
+  }
+
+  /// Create from JSON
+  factory JobFilters.fromJson(Map<String, dynamic> json) {
+    return JobFilters(
+      keywords: (json['keywords'] as List<dynamic>?)?.cast<String>() ?? [],
+      locations: (json['locations'] as List<dynamic>?)?.cast<String>() ?? [],
+      jobCategories: (json['jobCategories'] as List<dynamic>?)?.cast<String>() ?? [],
+      jobTypes: (json['jobTypes'] as List<dynamic>?)?.cast<String>() ?? [],
+      remote: json['remote'] as bool? ?? false,
+      internship: json['internship'] as bool? ?? false,
+      benefits: (json['benefits'] as List<dynamic>?)?.cast<String>().toSet() ?? {},
+      salaryMin: json['salaryMin'] as int?,
+      workExperiences: (json['workExperiences'] as List<dynamic>?)?.cast<String>() ?? [],
+      sortBy: json['sortBy'] == 'salaryDesc' 
+          ? JobSort.salaryDesc 
+          : JobSort.publishedAtDesc,
+      page: json['page'] as int? ?? 1,
+    );
+  }
 }

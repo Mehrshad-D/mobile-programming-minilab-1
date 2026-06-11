@@ -14,7 +14,7 @@ import 'dart:io';
 import 'storage_service.dart';
 import '../models/resume.dart';
 import '../models/application.dart';
-
+import '../models/job_alert.dart';
 
 /// In-app implementation of [ApiService].
 ///
@@ -360,6 +360,133 @@ Future<User> signup(SignupRequest request) async {
     ];
   }
 
+  // ---------------------------------------------------------------------------
+  // Section 5.7: Job Alerts
+  // ---------------------------------------------------------------------------
+
+  final List<JobAlert> _jobAlerts = [];
+  int _nextAlertId = 1;
+
+  @override
+  Future<List<JobAlert>> getJobAlerts() async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای مشاهده هشدارها ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    return List.unmodifiable(_jobAlerts);
+  }
+
+  @override
+  Future<JobAlert> createJobAlert(JobAlert alert) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای ایجاد هشدار ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    // Create a proper filters object with defaults
+    final filters = alert.filters.copyWith(page: 1);
+    
+    // Calculate match count based on current jobs
+    final matchedJobs = _jobs.where((job) => _matches(job, filters)).toList();
+    
+    final newAlert = JobAlert(
+      id: 'alert_${_nextAlertId++}',
+      name: alert.name,
+      filters: filters,
+      frequency: alert.frequency,
+      isActive: true,
+      createdAt: DateTime.now(),
+      matchCount: matchedJobs.length,
+    );
+    
+    _jobAlerts.add(newAlert);
+    return newAlert;
+  }
+
+  @override
+  Future<void> deleteJobAlert(String alertId) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای حذف هشدار ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    _jobAlerts.removeWhere((alert) => alert.id == alertId);
+  }
+
+  @override
+  Future<AlertMeta> getJobAlertMeta() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    // Get unique values from existing data
+    final categories = _jobs.map((j) => j.category).toSet().toList();
+    final locations = _jobs.map((j) => j.location.province).toSet().toList();
+    final jobTypes = _jobs.map((j) => j.contractType).toSet().toList();
+    final experiences = _jobs.map((j) => j.experienceLevel).toSet().toList();
+    
+    return AlertMeta(
+      frequencies: ['instantly', 'daily', 'weekly', 'biweekly'],
+      jobCategories: categories,
+      locations: locations,
+      jobTypes: jobTypes,
+      workExperiences: experiences,
+    );
+  }
+
+  @override
+  Future<JobAlert> updateJobAlert(String alertId, JobAlert alert) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای ویرایش هشدار ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    final index = _jobAlerts.indexWhere((a) => a.id == alertId);
+    if (index == -1) {
+      throw ApiException('هشدار مورد نظر یافت نشد', statusCode: 404);
+    }
+    
+    // Calculate new match count
+    final matchedJobs = _jobs.where((job) => _matches(job, alert.filters)).toList();
+    
+    final updatedAlert = alert.copyWith(
+      id: alertId,
+      matchCount: matchedJobs.length,
+    );
+    
+    _jobAlerts[index] = updatedAlert;
+    return updatedAlert;
+  }
+
+  @override
+  Future<void> toggleJobAlert(String alertId, bool isActive) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای تغییر وضعیت هشدار ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    final index = _jobAlerts.indexWhere((a) => a.id == alertId);
+    if (index == -1) {
+      throw ApiException('هشدار مورد نظر یافت نشد', statusCode: 404);
+    }
+    
+    final alert = _jobAlerts[index];
+    _jobAlerts[index] = JobAlert(
+      id: alert.id,
+      name: alert.name,
+      filters: alert.filters,
+      frequency: alert.frequency,
+      isActive: isActive,
+      createdAt: alert.createdAt,
+      lastSentAt: alert.lastSentAt,
+      matchCount: alert.matchCount,
+    );
+  }
+  
   // ---------------------------------------------------------------------------
   // Section 5.2: Meta / Reference data
   // ---------------------------------------------------------------------------

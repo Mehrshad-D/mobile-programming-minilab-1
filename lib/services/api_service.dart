@@ -12,6 +12,7 @@ import '../models/signup_request.dart';
 import '../models/user.dart';
 import '../models/resume.dart';
 import '../models/application.dart';
+import '../models/job_alert.dart';
 
 /// Abstract API service interface.
 /// Views never call this directly — they go through presenters.
@@ -106,4 +107,14 @@ abstract class ApiService {
   Future<Company> unfollowCompany(String companyId);
   Future<bool> isFollowingCompany(String companyId);
   Future<int> getCompanyFollowers(String companyId);
+
+  // ---------------------------------------------------------------------------
+  // Section 5.7: Job Alerts
+  // ---------------------------------------------------------------------------
+  Future<List<JobAlert>> getJobAlerts();
+  Future<JobAlert> createJobAlert(JobAlert alert);
+  Future<void> deleteJobAlert(String alertId);
+  Future<AlertMeta> getJobAlertMeta();
+  Future<JobAlert> updateJobAlert(String alertId, JobAlert alert);
+  Future<void> toggleJobAlert(String alertId, bool isActive);
 }
