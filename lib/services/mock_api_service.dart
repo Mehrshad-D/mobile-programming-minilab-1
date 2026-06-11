@@ -13,6 +13,7 @@ import 'api_service.dart';
 import 'dart:io';
 import 'storage_service.dart';
 import '../models/resume.dart';
+import '../models/application.dart';
 
 
 /// In-app implementation of [ApiService].
@@ -291,16 +292,6 @@ Future<User> signup(SignupRequest request) async {
     return _jobs.where((j) => _appliedJobIds.contains(j.id)).toList();
   }
 
-  @override
-  Future<void> applyToJob(String jobId) async {
-    await Future.delayed(_latency);
-    if (_currentUser == null) {
-      throw ApiException('برای ثبت درخواست ابتدا وارد شوید', statusCode: 401);
-    }
-    _appliedJobIds.add(jobId);
-    await StorageService.addAppliedJob(_currentUser!.id.toString(), jobId);
-  }
-
   // ---------------------------------------------------------------------------
   // Reference data
   // ---------------------------------------------------------------------------
@@ -467,6 +458,233 @@ Future<User> signup(SignupRequest request) async {
       ),
     );
   }
+
+
+  // ---------------------------------------------------------------------------
+  // Section 5.5: Applications
+  // ---------------------------------------------------------------------------
+
+  final Map<String, JobApplication> _applications = {};
+  final Map<String, String> _coverLetters = {};
+
+  @override
+  Future<List<JobApplication>> getApplications() async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای مشاهده درخواست‌ها ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    return _applications.values
+        .where((app) => app.job.id.isNotEmpty)
+        .toList();
+  }
+
+  @override
+  Future<JobApplication> getApplicationDetail(String applicationId) async {
+    await Future.delayed(_latency);
+    
+    final app = _applications[applicationId];
+    if (app == null) {
+      throw ApiException('درخواست مورد نظر یافت نشد', statusCode: 404);
+    }
+    
+    return app;
+  }
+
+  @override
+  Future<JobApplication> uploadCoverLetter(String applicationId, String content) async {
+    await Future.delayed(_latency);
+    
+    final app = _applications[applicationId];
+    if (app == null) {
+      throw ApiException('درخواست مورد نظر یافت نشد', statusCode: 404);
+    }
+    
+    final coverLetter = CoverLetter(
+      id: 'cl_${DateTime.now().millisecondsSinceEpoch}',
+      content: content,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+    
+    _coverLetters[applicationId] = content;
+    
+    final updatedApp = JobApplication(
+      id: app.id,
+      job: app.job,
+      appliedAt: app.appliedAt,
+      status: app.status,
+      coverLetter: coverLetter,
+      resumeUrl: app.resumeUrl,
+    );
+    
+    _applications[applicationId] = updatedApp;
+    return updatedApp;
+  }
+
+  @override
+  Future<JobApplication> updateCoverLetter(String applicationId, String content) async {
+    return uploadCoverLetter(applicationId, content);
+  }
+
+  @override
+  Future<void> cancelApplication(String applicationId) async {
+    await Future.delayed(_latency);
+    
+    final app = _applications[applicationId];
+    if (app == null) {
+      throw ApiException('درخواست مورد نظر یافت نشد', statusCode: 404);
+    }
+    
+    final cancelledApp = JobApplication(
+      id: app.id,
+      job: app.job,
+      appliedAt: app.appliedAt,
+      status: ApplicationStatus.cancelled,
+      coverLetter: app.coverLetter,
+      resumeUrl: app.resumeUrl,
+    );
+    
+    _applications[applicationId] = cancelledApp;
+    
+    // Also remove from applied jobs
+    _appliedJobIds.remove(app.job.id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Section 5.6: Companies (Enhanced)
+  // ---------------------------------------------------------------------------
+
+  final Set<String> _followedCompanyIds = {};
+
+  @override
+  Future<Company> getCompanyDetail(String slug) async {
+    await Future.delayed(_latency);
+    
+    final matches = _companies.where((c) => c.slug == slug).toList();
+    if (matches.isEmpty) {
+      throw ApiException('شرکت مورد نظر یافت نشد', statusCode: 404);
+    }
+    
+    final company = matches.first;
+    final isFollowed = _followedCompanyIds.contains(company.id);
+    
+    return Company(
+      id: company.id,
+      name: company.name,
+      slug: company.slug,
+      industry: company.industry,
+      city: company.city,
+      employeeCount: company.employeeCount,
+      about: company.about,
+      logoUrl: company.logoUrl,
+      isFollowed: isFollowed,
+      followersCount: company.followersCount + (_followedCompanyIds.contains(company.id) ? 1 : 0),
+      rating: company.rating ?? 4.5,
+      website: company.website ?? 'www.${company.slug}.com',
+      email: company.email ?? 'info@${company.slug}.com',
+      phone: company.phone ?? '۰۲۱-۱۲۳۴۵۶۷۸',
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> getCompanyApplyData(String companyId, String jobId) async {
+    await Future.delayed(_latency);
+    
+    return {
+      'job_id': jobId,
+      'company_id': companyId,
+      'required_fields': ['resume', 'cover_letter'],
+      'deadline': DateTime.now().add(const Duration(days: 30)).toIso8601String(),
+    };
+  }
+
+  @override
+  Future<Company> followCompany(String companyId) async {
+    await Future.delayed(_latency);
+    
+    if (_currentUser == null) {
+      throw ApiException('برای دنبال کردن شرکت ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    _followedCompanyIds.add(companyId);
+    
+    final company = _companies.firstWhere((c) => c.id == companyId);
+    return Company(
+      id: company.id,
+      name: company.name,
+      slug: company.slug,
+      industry: company.industry,
+      city: company.city,
+      employeeCount: company.employeeCount,
+      about: company.about,
+      logoUrl: company.logoUrl,
+      isFollowed: true,
+      followersCount: company.followersCount + 1,
+      rating: 4.5,
+    );
+  }
+
+  @override
+  Future<Company> unfollowCompany(String companyId) async {
+    await Future.delayed(_latency);
+    
+    _followedCompanyIds.remove(companyId);
+    
+    final company = _companies.firstWhere((c) => c.id == companyId);
+    return Company(
+      id: company.id,
+      name: company.name,
+      slug: company.slug,
+      industry: company.industry,
+      city: company.city,
+      employeeCount: company.employeeCount,
+      about: company.about,
+      logoUrl: company.logoUrl,
+      isFollowed: false,
+      followersCount: company.followersCount,
+      rating: 4.5,
+    );
+  }
+
+  @override
+  Future<bool> isFollowingCompany(String companyId) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _followedCompanyIds.contains(companyId);
+  }
+
+  @override
+  Future<int> getCompanyFollowers(String companyId) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final company = _companies.firstWhere((c) => c.id == companyId);
+    return company.followersCount + (_followedCompanyIds.contains(companyId) ? 1 : 0);
+  }
+
+  // Update applyToJob to also create an application record
+  @override
+  Future<void> applyToJob(String jobId) async {
+    await Future.delayed(_latency);
+    if (_currentUser == null) {
+      throw ApiException('برای ثبت درخواست ابتدا وارد شوید', statusCode: 401);
+    }
+    
+    _appliedJobIds.add(jobId);
+    await StorageService.addAppliedJob(_currentUser!.id.toString(), jobId);
+    
+    // Create application record
+    final job = _jobs.firstWhere((j) => j.id == jobId);
+    final application = JobApplication(
+      id: 'app_${DateTime.now().millisecondsSinceEpoch}',
+      job: job,
+      appliedAt: DateTime.now(),
+      status: ApplicationStatus.pending,
+      resumeUrl: _currentResume?.slug,
+    );
+    
+    _applications[application.id] = application;
+  }
+
 
   // ---------------------------------------------------------------------------
   // Resume / CV Builder (Section 5.4)

@@ -26,6 +26,7 @@ class AppSpacing {
   static const double lg = 24;
   static const double xl = 32;
   static const double radius = 12;
+  static const double radiusSm = 8.0;
 }
 
 /// All user-facing Persian strings live here so screens stay clean.

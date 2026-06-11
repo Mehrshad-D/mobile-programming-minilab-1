@@ -13,6 +13,7 @@ import 'edit_profile_screen.dart';
 import 'job_detail_screen.dart';
 import 'login_screen.dart';
 import 'resume_builder_screen.dart';
+import 'applications_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -239,6 +240,26 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
                 ),
               ),
             ),
+
+
+          const SizedBox(height: AppSpacing.md),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ApplicationsScreen()),
+              );
+            },
+            icon: const Icon(Icons.send_outlined),
+            label: const Text('درخواست‌های من'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+            ),
+          ),
+
+
           const SizedBox(height: AppSpacing.lg),
           
           // Logout Button

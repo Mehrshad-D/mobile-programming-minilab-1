@@ -1,3 +1,4 @@
+import '../models/api_response.dart';
 /// Custom exception for API errors
 class ApiException implements Exception {
   final String message;

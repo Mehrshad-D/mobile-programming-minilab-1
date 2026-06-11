@@ -11,6 +11,7 @@ import '../models/province.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
 import '../models/resume.dart';
+import '../models/application.dart';
 
 /// Abstract API service interface.
 /// Views never call this directly — they go through presenters.
@@ -82,4 +83,27 @@ abstract class ApiService {
   Future<String> uploadResumeFile(File file);
   Future<void> togglePublicity(bool isPublic);
   Future<void> toggleSearchStatus(bool isSearchable);
+
+
+
+  // Add after the existing methods, before the closing brace:
+
+  // ---------------------------------------------------------------------------
+  // Section 5.5: Applications
+  // ---------------------------------------------------------------------------
+  Future<List<JobApplication>> getApplications();
+  Future<JobApplication> getApplicationDetail(String applicationId);
+  Future<JobApplication> uploadCoverLetter(String applicationId, String content);
+  Future<JobApplication> updateCoverLetter(String applicationId, String content);
+  Future<void> cancelApplication(String applicationId);
+
+  // ---------------------------------------------------------------------------
+  // Section 5.6: Companies (Enhanced)
+  // ---------------------------------------------------------------------------
+  Future<Company> getCompanyDetail(String slug);
+  Future<Map<String, dynamic>> getCompanyApplyData(String companyId, String jobId);
+  Future<Company> followCompany(String companyId);
+  Future<Company> unfollowCompany(String companyId);
+  Future<bool> isFollowingCompany(String companyId);
+  Future<int> getCompanyFollowers(String companyId);
 }
