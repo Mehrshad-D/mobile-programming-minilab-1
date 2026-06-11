@@ -15,6 +15,8 @@ import 'login_screen.dart';
 import 'resume_builder_screen.dart';
 import 'applications_screen.dart';
 import 'job_alerts_screen.dart';
+import 'contact_screen.dart';
+import 'feedback_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -268,6 +270,38 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
             },
             icon: const Icon(Icons.notifications_outlined),
             label: const Text('هشدارهای شغلی'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+            ),
+          ),
+
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+              );
+            },
+            icon: const Icon(Icons.feedback_outlined),
+            label: const Text('ارسال بازخورد'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ContactScreen()),
+              );
+            },
+            icon: const Icon(Icons.contact_mail_outlined),
+            label: const Text('تماس با ما'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.md,

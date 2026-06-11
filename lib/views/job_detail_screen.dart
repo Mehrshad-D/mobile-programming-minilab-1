@@ -7,6 +7,7 @@ import '../utils/constants.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/loading_widget.dart';
 import 'company_screen.dart';
+import 'violation_report_screen.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final String jobId;
@@ -34,6 +35,19 @@ class _JobDetailScreenState extends State<JobDetailScreen>
   }
 
   // ---- JobDetailView ----
+
+  void _reportJob() {
+    if (_job == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ViolationReportScreen(
+          jobId: _job!.id,
+          jobTitle: _job!.title,
+        ),
+      ),
+    );
+  }
+
   @override
   void showLoading() => setState(() {
         _isLoading = true;
@@ -71,7 +85,16 @@ class _JobDetailScreenState extends State<JobDetailScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text(AppStrings.jobsTitle)),
+      appBar: AppBar(
+        title: const Text(AppStrings.jobsTitle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.flag_outlined),
+            onPressed: _reportJob,
+            tooltip: 'گزارش تخلف',
+          ),
+        ],
+      ),
       body: _buildBody(),
       bottomNavigationBar: _job == null ? null : _buildApplyBar(),
     );

@@ -15,6 +15,7 @@ import 'storage_service.dart';
 import '../models/resume.dart';
 import '../models/application.dart';
 import '../models/job_alert.dart';
+import '../models/feedback.dart';
 
 /// In-app implementation of [ApiService].
 ///

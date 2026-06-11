@@ -13,6 +13,7 @@ import '../models/user.dart';
 import '../models/resume.dart';
 import '../models/application.dart';
 import '../models/job_alert.dart';
+import '../models/feedback.dart';
 
 /// Abstract API service interface.
 /// Views never call this directly — they go through presenters.
@@ -123,7 +124,6 @@ abstract class ApiService {
   // Section 5.8: Utility
   // ---------------------------------------------------------------------------
   Future<EmailValidationResult> checkEmail(String email);
-  Future<Job?> getLastAppliedJob(); // Already exists, keep it
   Future<FeedbackResult> submitFeedback(FeedbackRequest feedback);
   Future<FeedbackResult> submitContact(ContactRequest contact);
   Future<FeedbackResult> getFeedbackResult(String id);
