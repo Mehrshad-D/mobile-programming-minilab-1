@@ -117,4 +117,20 @@ abstract class ApiService {
   Future<AlertMeta> getJobAlertMeta();
   Future<JobAlert> updateJobAlert(String alertId, JobAlert alert);
   Future<void> toggleJobAlert(String alertId, bool isActive);
+
+
+  // ---------------------------------------------------------------------------
+  // Section 5.8: Utility
+  // ---------------------------------------------------------------------------
+  Future<EmailValidationResult> checkEmail(String email);
+  Future<Job?> getLastAppliedJob(); // Already exists, keep it
+  Future<FeedbackResult> submitFeedback(FeedbackRequest feedback);
+  Future<FeedbackResult> submitContact(ContactRequest contact);
+  Future<FeedbackResult> getFeedbackResult(String id);
+  Future<void> registerDevice(DeviceRegistration device);
+  Future<void> registerFCMDevice(String fcmToken);
+  Future<List<ViolationReason>> getViolationReasons();
+  Future<void> reportViolation(ViolationReport report);
+  Future<void> markNotificationAsSeen(String notificationId);
+  Future<void> markAllNotificationsAsSeen();
 }
