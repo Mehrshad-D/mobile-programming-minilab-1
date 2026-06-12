@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:cross_file/cross_file.dart';
 import '../models/job.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
@@ -52,7 +52,7 @@ class ProfilePresenter {
     }
   }
 
-  Future<void> uploadAvatar(File imageFile) async {
+  Future<void> uploadAvatar(XFile imageFile) async {
     _view.showLoading();
     try {
       final avatarUrl = await _api.uploadAvatar(imageFile);

@@ -1,9 +1,9 @@
-import 'dart:io';
+import 'package:cross_file/cross_file.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../utils/constants.dart';
 
-typedef AvatarPickedCallback = void Function(File image);
+typedef AvatarPickedCallback = void Function(XFile image);
 
 /// Reusable avatar widget with tap-to-upload functionality
 class AvatarWidget extends StatelessWidget {
@@ -45,23 +45,17 @@ class AvatarWidget extends StatelessWidget {
     );
   }
 
-  /// Renders either a remote URL or a locally-picked file. The mock upload
-  /// stores the picked image's local path (it can't serve a real URL), so we
-  /// must use [Image.file] for non-http values.
+  /// Renders hosted URLs and base64 data URLs. Works on mobile, desktop, and
+  /// web — [Image.file] is intentionally avoided because it is unsupported on
+  /// Flutter Web.
   Widget _buildAvatarImage(String source) {
     final size = radius * 2;
-    final isRemote = source.startsWith('http');
-    if (isRemote) {
-      return Image.network(
-        source,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => _buildInitials(),
-      );
-    }
-    return Image.file(
-      File(source),
+    final canLoad = source.startsWith('http') ||
+        source.startsWith('data:') ||
+        source.startsWith('blob:');
+    if (!canLoad) return _buildInitials();
+    return Image.network(
+      source,
       width: size,
       height: size,
       fit: BoxFit.cover,
@@ -134,7 +128,7 @@ class AvatarWidget extends StatelessWidget {
 
   Future<void> _pickImage(BuildContext context, ImageSource source) async {
     Navigator.pop(context);
-    
+
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: source,
@@ -142,9 +136,9 @@ class AvatarWidget extends StatelessWidget {
       maxHeight: 512,
       imageQuality: 85,
     );
-    
+
     if (pickedFile != null && onImagePicked != null) {
-      onImagePicked!(File(pickedFile.path));
+      onImagePicked!(pickedFile);
     }
   }
 }

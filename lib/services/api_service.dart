@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cross_file/cross_file.dart';
 import '../models/api_response.dart';
 import '../models/auth_session.dart';
 import '../models/company.dart';
@@ -55,7 +56,7 @@ abstract class ApiService {
   
   // NEW METHODS:
   Future<User> updateProfile(User user);
-  Future<String> uploadAvatar(File imageFile);
+  Future<String> uploadAvatar(XFile imageFile);
 
   // ---------------------------------------------------------------------------
   // Reference data (used by filters and meta endpoints)
@@ -138,7 +139,7 @@ abstract class ApiService {
   Future<int> getResumeScore();
 
   /// `POST .../avatar` — multipart profile image for the CV.
-  Future<String> uploadCvAvatar(String cvId, File imageFile);
+  Future<String> uploadCvAvatar(String cvId, XFile imageFile);
 
   /// `POST .../cv-file` — multipart resume document.
   Future<String> uploadResumeFile(File file);

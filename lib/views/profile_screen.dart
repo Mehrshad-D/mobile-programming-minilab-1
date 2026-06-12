@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:cross_file/cross_file.dart';
 import 'package:flutter/material.dart';
 import '../models/job.dart';
 import '../models/resume.dart';
@@ -164,7 +164,7 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
     }
   }
 
-  Future<void> _uploadAvatar(File image) async {
+  Future<void> _uploadAvatar(XFile image) async {
     await _presenter.uploadAvatar(image);
   }
 
@@ -546,7 +546,7 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
 
 class _ProfileHeader extends StatelessWidget {
   final User user;
-  final Function(File) onAvatarPicked;
+  final void Function(XFile) onAvatarPicked;
 
   const _ProfileHeader({
     required this.user,

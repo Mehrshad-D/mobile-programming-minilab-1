@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:cross_file/cross_file.dart';
 import '../models/api_response.dart';
 import '../models/auth_session.dart';
 import '../models/company.dart';
@@ -237,22 +239,21 @@ Future<User> signup(SignupRequest request) async {
   }
 
   @override
-  Future<String> uploadAvatar(File imageFile) async {
+  Future<String> uploadAvatar(XFile imageFile) async {
     await Future.delayed(_latency);
-    
+
     if (_currentUser == null) {
       throw ApiException('برای آپلود عکس ابتدا وارد شوید', statusCode: 401);
     }
-    
-    // A real backend would store the file and return a hosted URL. The mock
-    // can't serve files, so we keep the picked image's local path and let the
-    // UI render it with Image.file — this way the actual photo is displayed.
-    final avatarPath = imageFile.path;
 
-    _currentUser = _currentUser!.copyWith(avatarUrl: avatarPath);
+    // Encode as a base64 data URL so the avatar renders on web, mobile, and
+    // desktop (Image.file is unsupported on Flutter Web).
+    final avatarUrl = await _imageToDataUrl(imageFile);
+
+    _currentUser = _currentUser!.copyWith(avatarUrl: avatarUrl);
     await StorageService.saveCurrentUser(_currentUser!);
 
-    return avatarPath;
+    return avatarUrl;
   }
 
   @override
@@ -1448,6 +1449,54 @@ Future<User> signup(SignupRequest request) async {
   Resume _withScore(Resume resume) =>
       resume.copyWith(score: resume.calculateScore());
 
+  /// Encodes picked image bytes as a data URL — works on all platforms.
+  Future<String> _imageToDataUrl(XFile file) async {
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
+      throw const ApiException('فایل یافت نشد', statusCode: 400);
+    }
+    final mime = _mimeFromXFile(file);
+    return 'data:$mime;base64,${base64Encode(bytes)}';
+  }
+
+  String _mimeFromXFile(XFile file) {
+    final mime = file.mimeType;
+    if (mime != null && mime.startsWith('image/')) return mime;
+    final name = '${file.name} ${file.path}'.toLowerCase();
+    if (name.contains('.png')) return 'image/png';
+    if (name.contains('.webp')) return 'image/webp';
+    if (name.contains('.gif')) return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  Future<void> _validateXFileUpload(
+    XFile file, {
+    required List<String> allowedExtensions,
+    required int maxBytes,
+  }) async {
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
+      throw const ApiException('فایل یافت نشد', statusCode: 400);
+    }
+    if (bytes.length > maxBytes) {
+      throw const ApiException('حجم فایل بیش از حد مجاز است', statusCode: 400);
+    }
+    final mime = file.mimeType?.toLowerCase() ?? '';
+    if (mime.contains('png') && allowedExtensions.contains('png')) return;
+    if (mime.contains('webp') && allowedExtensions.contains('webp')) return;
+    if (mime.contains('jpeg') || mime.contains('jpg')) {
+      if (allowedExtensions.contains('jpg') ||
+          allowedExtensions.contains('jpeg')) {
+        return;
+      }
+    }
+    final name = '${file.name} ${file.path}'.toLowerCase();
+    for (final ext in allowedExtensions) {
+      if (name.contains('.$ext')) return;
+    }
+    throw const ApiException('فرمت فایل مجاز نیست', statusCode: 400);
+  }
+
   Future<void> _validateUpload(
     File file, {
     required List<String> allowedExtensions,
@@ -1915,17 +1964,15 @@ Future<User> signup(SignupRequest request) async {
   }
 
   @override
-  Future<String> uploadCvAvatar(String cvId, File imageFile) async {
+  Future<String> uploadCvAvatar(String cvId, XFile imageFile) async {
     await Future.delayed(_latency);
     await _resumeForCv(cvId);
-    await _validateUpload(
+    await _validateXFileUpload(
       imageFile,
       allowedExtensions: _avatarExtensions,
       maxBytes: _maxAvatarBytes,
     );
-    // Keep the picked image's local path so the UI can display the real photo
-    // (the mock can't host an uploaded file at a public URL).
-    final url = imageFile.path;
+    final url = await _imageToDataUrl(imageFile);
     _currentResume = _currentResume!.copyWith(avatarUrl: url);
     if (_currentUser != null) {
       _currentUser = _currentUser!.copyWith(avatarUrl: url);

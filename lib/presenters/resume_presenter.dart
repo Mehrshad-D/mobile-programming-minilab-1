@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cross_file/cross_file.dart';
 import '../models/resume.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
@@ -298,7 +299,7 @@ class ResumePresenter {
     }
   }
 
-  Future<void> uploadAvatar(String cvId, File imageFile) async {
+  Future<void> uploadAvatar(String cvId, XFile imageFile) async {
     _view.showLoading();
     try {
       await _api.uploadCvAvatar(cvId, imageFile);
