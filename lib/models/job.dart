@@ -96,6 +96,10 @@ class Job {
   final String? description;
   final List<String> requirements;
 
+  /// Whether the posting is publicly visible. Private/expired postings are
+  /// hidden from the public job-by-slug endpoint (section 5.6).
+  final bool isPublished;
+
   const Job({
     required this.id,
     required this.title,
@@ -112,7 +116,12 @@ class Job {
     this.benefits = const {},
     this.description,
     this.requirements = const [],
+    this.isPublished = true,
   });
+
+  /// URL slug used by `GET /companies/{company_slug}/jobs/{job_slug}`.
+  /// Derived from the stable id so no seed data changes are required.
+  String get slug => id;
 
   factory Job.fromJson(Map<String, dynamic> json) {
     return Job(
@@ -138,6 +147,7 @@ class Job {
               ?.map((e) => e as String)
               .toList() ??
           const [],
+      isPublished: json['is_published'] as bool? ?? true,
     );
   }
 
@@ -158,6 +168,7 @@ class Job {
       'benefits': benefits.toList(),
       'description': description,
       'requirements': requirements,
+      'is_published': isPublished,
     };
   }
 }

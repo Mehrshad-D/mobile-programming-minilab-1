@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/application.dart';
 import '../models/auth_session.dart';
+import '../models/job_alert.dart';
 import '../models/resume.dart';
 import '../models/user.dart';
 
@@ -216,5 +217,38 @@ class StorageService {
   static Future<void> clearApplications(String userId) async {
     final prefs = await _getPrefs();
     await prefs.remove(_applicationsKey(userId));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Job alerts persistence (Section 5.7)
+  // ---------------------------------------------------------------------------
+
+  static String _jobAlertsKey(String userId) => 'job_alerts_$userId';
+
+  /// Persist the user's job alerts so they survive app restarts.
+  static Future<void> saveJobAlerts(
+    String userId,
+    List<JobAlert> alerts,
+  ) async {
+    final prefs = await _getPrefs();
+    final encoded = jsonEncode(alerts.map((a) => a.toJson()).toList());
+    await prefs.setString(_jobAlertsKey(userId), encoded);
+  }
+
+  /// Load the persisted job alerts for a user, or an empty list if none.
+  static Future<List<JobAlert>> getJobAlerts(String userId) async {
+    final prefs = await _getPrefs();
+    final json = prefs.getString(_jobAlertsKey(userId));
+    if (json == null) return [];
+    final List<dynamic> decoded = jsonDecode(json);
+    return decoded
+        .map((e) => JobAlert.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Remove all persisted job alerts for a user.
+  static Future<void> clearJobAlerts(String userId) async {
+    final prefs = await _getPrefs();
+    await prefs.remove(_jobAlertsKey(userId));
   }
 }

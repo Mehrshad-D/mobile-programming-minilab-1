@@ -58,6 +58,7 @@ class MockApiService implements ApiService {
         _usedSlugs.add(_currentResume!.slug!);
       }
       await _loadApplicationsForCurrentUser();
+      await _loadAlertsForCurrentUser();
     }
   }
 
@@ -124,6 +125,7 @@ class MockApiService implements ApiService {
       ..addAll(jobIds);
     await _loadResumeForCurrentUser();
     await _loadApplicationsForCurrentUser();
+    await _loadAlertsForCurrentUser();
 
     // 302 Redirect → homepage
     return LoginResult.success(user);
@@ -183,6 +185,7 @@ Future<User> signup(SignupRequest request) async {
     _currentResume = null;
     _appliedJobIds.clear();
     _applications.clear();
+    _jobAlerts.clear();
     await StorageService.clearCurrentUser();
     await StorageService.clearSession();
   }
@@ -353,13 +356,28 @@ Future<User> signup(SignupRequest request) async {
 
   @override
   Future<PaginatedResponse<Job>> getCompanyJobs(
-    String slug, {
+    String companyIdOrSlug, {
     int page = 1,
   }) async {
     await Future.delayed(_latency);
-    final companyJobs = _jobs.where((j) => j.company.slug == slug).toList();
+    _requireLogin();
+    final company = _companyByIdOrSlug(companyIdOrSlug);
+    final companyJobs =
+        _jobs.where((j) => j.company.id == company.id).toList();
     _sort(companyJobs, JobSort.publishedAtDesc);
     return _paginate(companyJobs, page);
+  }
+
+  /// Resolves a company by id (section 5.6 `{company_id}`) or by slug (legacy UI
+  /// calls). Throws 404 when neither matches.
+  Company _companyByIdOrSlug(String idOrSlug) {
+    final matches = _companies
+        .where((c) => c.id == idOrSlug || c.slug == idOrSlug)
+        .toList();
+    if (matches.isEmpty) {
+      throw const ApiException('شرکت مورد نظر یافت نشد', statusCode: 404);
+    }
+    return matches.first;
   }
 
   // ---------------------------------------------------------------------------
@@ -444,71 +462,103 @@ Future<User> signup(SignupRequest request) async {
   // Section 5.7: Job Alerts
   // ---------------------------------------------------------------------------
 
+  /// Working set of the *authenticated* user's alerts. Loaded on login and
+  /// cleared on logout so users never see each other's alerts.
   final List<JobAlert> _jobAlerts = [];
-  int _nextAlertId = 1;
+
+  static const int _maxJobAlerts = 20;
+
+  Future<void> _persistAlerts() async {
+    final user = _currentUser;
+    if (user == null) return;
+    await StorageService.saveJobAlerts(user.id.toString(), _jobAlerts);
+  }
+
+  Future<void> _loadAlertsForCurrentUser() async {
+    _jobAlerts.clear();
+    final user = _currentUser;
+    if (user == null) return;
+    _jobAlerts.addAll(await StorageService.getJobAlerts(user.id.toString()));
+  }
 
   @override
   Future<List<JobAlert>> getJobAlerts() async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای مشاهده هشدارها ابتدا وارد شوید', statusCode: 401);
-    }
-    
+    _requireLogin();
     return List.unmodifiable(_jobAlerts);
   }
 
   @override
   Future<JobAlert> createJobAlert(JobAlert alert) async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای ایجاد هشدار ابتدا وارد شوید', statusCode: 401);
+    _requireLogin();
+
+    final name = alert.name.trim();
+    if (name.isEmpty) {
+      throw const ApiException('نام هشدار نمی‌تواند خالی باشد', statusCode: 422);
     }
-    
-    // Create a proper filters object with defaults
+
+    // Duplicate prevention: same (case-insensitive) name already exists.
+    final isDuplicate = _jobAlerts.any(
+      (a) => a.name.trim().toLowerCase() == name.toLowerCase(),
+    );
+    if (isDuplicate) {
+      throw const ApiException(
+        'هشداری با این نام قبلاً ایجاد شده است',
+        statusCode: 409,
+      );
+    }
+
+    if (_jobAlerts.length >= _maxJobAlerts) {
+      throw const ApiException(
+        'به حداکثر تعداد هشدارهای مجاز رسیده‌اید',
+        statusCode: 422,
+      );
+    }
+
     final filters = alert.filters.copyWith(page: 1);
-    
-    // Calculate match count based on current jobs
     final matchedJobs = _jobs.where((job) => _matches(job, filters)).toList();
-    
+
     final newAlert = JobAlert(
-      id: 'alert_${_nextAlertId++}',
-      name: alert.name,
+      id: 'alert_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
       filters: filters,
       frequency: alert.frequency,
       isActive: true,
       createdAt: DateTime.now(),
       matchCount: matchedJobs.length,
     );
-    
+
     _jobAlerts.add(newAlert);
+    await _persistAlerts();
     return newAlert;
   }
 
   @override
   Future<void> deleteJobAlert(String alertId) async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای حذف هشدار ابتدا وارد شوید', statusCode: 401);
-    }
-    
+    _requireLogin();
+
+    final before = _jobAlerts.length;
     _jobAlerts.removeWhere((alert) => alert.id == alertId);
+    if (_jobAlerts.length == before) {
+      throw const ApiException('هشدار مورد نظر یافت نشد', statusCode: 404);
+    }
+    await _persistAlerts();
   }
 
   @override
   Future<AlertMeta> getJobAlertMeta() async {
     await Future.delayed(const Duration(milliseconds: 300));
-    
-    // Get unique values from existing data
+    _requireLogin();
+
     final categories = _jobs.map((j) => j.category).toSet().toList();
     final locations = _jobs.map((j) => j.location.province).toSet().toList();
     final jobTypes = _jobs.map((j) => j.contractType).toSet().toList();
     final experiences = _jobs.map((j) => j.experienceLevel).toSet().toList();
-    
+
     return AlertMeta(
-      frequencies: ['instantly', 'daily', 'weekly', 'biweekly'],
+      frequencies: const ['instantly', 'daily', 'weekly', 'biweekly'],
       jobCategories: categories,
       locations: locations,
       jobTypes: jobTypes,
@@ -519,52 +569,58 @@ Future<User> signup(SignupRequest request) async {
   @override
   Future<JobAlert> updateJobAlert(String alertId, JobAlert alert) async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای ویرایش هشدار ابتدا وارد شوید', statusCode: 401);
-    }
-    
+    _requireLogin();
+
     final index = _jobAlerts.indexWhere((a) => a.id == alertId);
     if (index == -1) {
-      throw ApiException('هشدار مورد نظر یافت نشد', statusCode: 404);
+      throw const ApiException('هشدار مورد نظر یافت نشد', statusCode: 404);
     }
-    
-    // Calculate new match count
-    final matchedJobs = _jobs.where((job) => _matches(job, alert.filters)).toList();
-    
+
+    final name = alert.name.trim();
+    if (name.isEmpty) {
+      throw const ApiException('نام هشدار نمی‌تواند خالی باشد', statusCode: 422);
+    }
+
+    // Duplicate name against *other* alerts.
+    final isDuplicate = _jobAlerts.any(
+      (a) =>
+          a.id != alertId &&
+          a.name.trim().toLowerCase() == name.toLowerCase(),
+    );
+    if (isDuplicate) {
+      throw const ApiException(
+        'هشداری با این نام قبلاً ایجاد شده است',
+        statusCode: 409,
+      );
+    }
+
+    final matchedJobs =
+        _jobs.where((job) => _matches(job, alert.filters)).toList();
+
     final updatedAlert = alert.copyWith(
       id: alertId,
+      name: name,
+      createdAt: _jobAlerts[index].createdAt,
       matchCount: matchedJobs.length,
     );
-    
+
     _jobAlerts[index] = updatedAlert;
+    await _persistAlerts();
     return updatedAlert;
   }
 
   @override
   Future<void> toggleJobAlert(String alertId, bool isActive) async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای تغییر وضعیت هشدار ابتدا وارد شوید', statusCode: 401);
-    }
-    
+    _requireLogin();
+
     final index = _jobAlerts.indexWhere((a) => a.id == alertId);
     if (index == -1) {
-      throw ApiException('هشدار مورد نظر یافت نشد', statusCode: 404);
+      throw const ApiException('هشدار مورد نظر یافت نشد', statusCode: 404);
     }
-    
-    final alert = _jobAlerts[index];
-    _jobAlerts[index] = JobAlert(
-      id: alert.id,
-      name: alert.name,
-      filters: alert.filters,
-      frequency: alert.frequency,
-      isActive: isActive,
-      createdAt: alert.createdAt,
-      lastSentAt: alert.lastSentAt,
-      matchCount: alert.matchCount,
-    );
+
+    _jobAlerts[index] = _jobAlerts[index].copyWith(isActive: isActive);
+    await _persistAlerts();
   }
   
   // ---------------------------------------------------------------------------
@@ -574,6 +630,16 @@ Future<User> signup(SignupRequest request) async {
   final List<FeedbackResult> _feedbacks = [];
   final List<DeviceRegistration> _devices = [];
   final Set<String> _seenNotifications = {};
+  final List<ViolationReport> _violationReports = [];
+  bool _allNotificationsSeen = false;
+  String? _notificationCookie;
+
+  // Read-only diagnostics (not part of [ApiService]) used by tests/UI.
+  bool get allNotificationsSeen => _allNotificationsSeen;
+  String? get notificationCookie => _notificationCookie;
+  List<ViolationReport> get violationReports =>
+      List.unmodifiable(_violationReports);
+  int get registeredDeviceCount => _devices.length;
 
   @override
   Future<EmailValidationResult> checkEmail(String email) async {
@@ -607,6 +673,13 @@ Future<User> signup(SignupRequest request) async {
     if (_currentUser == null && feedback.email == null) {
       throw ApiException('برای ارسال بازخورد، لطفاً ایمیل خود را وارد کنید', statusCode: 400);
     }
+
+    if (feedback.subject.trim().isEmpty || feedback.message.trim().isEmpty) {
+      throw const ApiException(
+        'موضوع و متن بازخورد الزامی است',
+        statusCode: 422,
+      );
+    }
     
     final result = FeedbackResult(
       id: 'fb_${DateTime.now().millisecondsSinceEpoch}',
@@ -623,8 +696,16 @@ Future<User> signup(SignupRequest request) async {
   Future<FeedbackResult> submitContact(ContactRequest contact) async {
     await Future.delayed(_latency);
     
-    if (contact.name.isEmpty || contact.email.isEmpty || contact.message.isEmpty) {
-      throw ApiException('لطفاً تمام فیلدهای ضروری را پر کنید', statusCode: 400);
+    if (contact.name.trim().isEmpty ||
+        contact.email.trim().isEmpty ||
+        contact.message.trim().isEmpty) {
+      throw const ApiException('لطفاً تمام فیلدهای ضروری را پر کنید', statusCode: 400);
+    }
+
+    final emailRegex =
+        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    if (!emailRegex.hasMatch(contact.email.trim())) {
+      throw const ApiException('فرمت ایمیل صحیح نیست', statusCode: 422);
     }
     
     final result = FeedbackResult(
@@ -662,15 +743,26 @@ Future<User> signup(SignupRequest request) async {
   @override
   Future<void> registerFCMDevice(String fcmToken) async {
     await Future.delayed(const Duration(milliseconds: 500));
-    
-    // In a real app, this would register with FCM
+
+    if (fcmToken.trim().isEmpty) {
+      throw const ApiException('توکن FCM نامعتبر است', statusCode: 422);
+    }
+
+    // Deduplicate by token so the same device isn't registered twice.
+    final existingIndex =
+        _devices.indexWhere((d) => d.fcmToken == fcmToken);
+    if (existingIndex != -1) {
+      return;
+    }
+
     final deviceId = 'web_${DateTime.now().millisecondsSinceEpoch}';
-    final device = DeviceRegistration(
-      deviceId: deviceId,
-      fcmToken: fcmToken,
-      platform: 'web',
+    _devices.add(
+      DeviceRegistration(
+        deviceId: deviceId,
+        fcmToken: fcmToken,
+        platform: 'web',
+      ),
     );
-    _devices.add(device);
   }
 
   @override
@@ -709,30 +801,46 @@ Future<User> signup(SignupRequest request) async {
   @override
   Future<void> reportViolation(ViolationReport report) async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای گزارش تخلف ابتدا وارد شوید', statusCode: 401);
+    _requireLogin();
+
+    // Verify job exists.
+    final jobMatches = _jobs.where((j) => j.id == report.jobId).toList();
+    if (jobMatches.isEmpty) {
+      throw const ApiException('آگهی مورد نظر یافت نشد', statusCode: 404);
     }
-    
-    // Verify job exists
-    final job = _jobs.firstWhere(
-      (j) => j.id == report.jobId,
-      orElse: () => throw ApiException('آگهی مورد نظر یافت نشد', statusCode: 404),
-    );
-    
-    // Report is stored (in real app, this would be saved)
+
+    // Verify the reported reason is one of the allowed reasons.
+    const allowedReasonIds = {'1', '2', '3', '4', '5'};
+    if (!allowedReasonIds.contains(report.reasonId)) {
+      throw const ApiException('دلیل گزارش نامعتبر است', statusCode: 422);
+    }
+
+    _violationReports.add(report);
   }
 
   @override
   Future<void> markNotificationAsSeen(String notificationId) async {
     await Future.delayed(const Duration(milliseconds: 200));
+    _requireLogin();
     _seenNotifications.add(notificationId);
   }
 
   @override
   Future<void> markAllNotificationsAsSeen() async {
     await Future.delayed(const Duration(milliseconds: 200));
-    // In a real app, this would mark all as seen
+    _requireLogin();
+    _allNotificationsSeen = true;
+  }
+
+  /// `POST /api/v10/doc-notification-cookie/` — stores the notification consent
+  /// cookie for the current session. Public (set before/around auth).
+  @override
+  Future<void> storeNotificationCookie(String cookie) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (cookie.trim().isEmpty) {
+      throw const ApiException('مقدار کوکی نامعتبر است', statusCode: 422);
+    }
+    _notificationCookie = cookie;
   }
 
 
@@ -1074,15 +1182,66 @@ Future<User> signup(SignupRequest request) async {
   }
 
   @override
-  Future<Map<String, dynamic>> getCompanyApplyData(String companyId, String jobId) async {
+  Future<Map<String, dynamic>> getCompanyApplyData(
+    String companyId,
+    String jobId,
+  ) async {
     await Future.delayed(_latency);
-    
+    _requireLogin();
+
+    final company = _companyByIdOrSlug(companyId);
+    final jobMatches = _jobs
+        .where((j) => j.id == jobId && j.company.id == company.id)
+        .toList();
+    if (jobMatches.isEmpty) {
+      throw const ApiException(
+        'آگهی مورد نظر برای این شرکت یافت نشد',
+        statusCode: 404,
+      );
+    }
+    final job = jobMatches.first;
+
+    final alreadyApplied = _appliedJobIds.contains(job.id);
+    final hasResume = _currentResume != null;
+
     return {
-      'job_id': jobId,
-      'company_id': companyId,
-      'required_fields': ['resume', 'cover_letter'],
-      'deadline': DateTime.now().add(const Duration(days: 30)).toIso8601String(),
+      'job_id': job.id,
+      'job_title': job.title,
+      'company_id': company.id,
+      'company_name': company.name,
+      'required_fields': const ['resume', 'cover_letter'],
+      'resume_required': true,
+      'cover_letter_required': false,
+      'already_applied': alreadyApplied,
+      'has_resume': hasResume,
+      'can_apply': job.isPublished && !alreadyApplied && hasResume,
+      'deadline':
+          DateTime.now().add(const Duration(days: 30)).toIso8601String(),
     };
+  }
+
+  @override
+  Future<Job> getCompanyJobBySlug(String companySlug, String jobSlug) async {
+    await Future.delayed(_latency);
+    _requireLogin();
+
+    final company = _companyByIdOrSlug(companySlug);
+    final matches = _jobs
+        .where((j) => j.company.id == company.id && j.slug == jobSlug)
+        .toList();
+    if (matches.isEmpty) {
+      throw const ApiException('آگهی مورد نظر یافت نشد', statusCode: 404);
+    }
+    final job = matches.first;
+
+    // Visibility: private/unpublished postings are not exposed publicly.
+    if (!job.isPublished) {
+      throw const ApiException(
+        'این آگهی در دسترس عموم نیست',
+        statusCode: 403,
+      );
+    }
+    return job;
   }
 
   @override
@@ -2043,6 +2202,7 @@ Future<User> signup(SignupRequest request) async {
       publishedAt: '۱۴۰۵/۰۳/۰۵',
       postedAt: DateTime(2026, 5, 5),
       isRemote: false,
+      isPublished: false,
       benefits: const {
         JobBenefit.commission,
         JobBenefit.bonus,

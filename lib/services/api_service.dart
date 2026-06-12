@@ -165,6 +165,10 @@ abstract class ApiService {
   // ---------------------------------------------------------------------------
   Future<Company> getCompanyDetail(String slug);
   Future<Map<String, dynamic>> getCompanyApplyData(String companyId, String jobId);
+
+  /// `GET /api/v10/companies/{company_slug}/jobs/{job_slug}` — public job detail
+  /// resolved by slug; throws 403 for non-public postings.
+  Future<Job> getCompanyJobBySlug(String companySlug, String jobSlug);
   Future<Company> followCompany(String companyId);
   Future<Company> unfollowCompany(String companyId);
   Future<bool> isFollowingCompany(String companyId);
@@ -194,4 +198,7 @@ abstract class ApiService {
   Future<void> reportViolation(ViolationReport report);
   Future<void> markNotificationAsSeen(String notificationId);
   Future<void> markAllNotificationsAsSeen();
+
+  /// `POST /api/v10/doc-notification-cookie/` — stores the notification cookie.
+  Future<void> storeNotificationCookie(String cookie);
 }
