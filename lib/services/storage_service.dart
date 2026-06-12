@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/auth_session.dart';
 import '../models/user.dart';
 import '../models/job.dart';
 
@@ -8,6 +9,7 @@ class StorageService {
   static const String _keyCurrentUser = 'current_user';
   static const String _keyRegisteredUsers = 'registered_users';
   static const String _keyAppliedJobs = 'applied_jobs';
+  static const String _keySession = 'auth_session';
 
   static Future<SharedPreferences> _getPrefs() async {
     return await SharedPreferences.getInstance();
@@ -35,6 +37,32 @@ class StorageService {
   static Future<void> clearCurrentUser() async {
     final prefs = await _getPrefs();
     await prefs.remove(_keyCurrentUser);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auth session (Sanctum cookie jar) persistence — section 5.3
+  // ---------------------------------------------------------------------------
+
+  /// Persist the CSRF token + session cookies so the session survives restarts.
+  static Future<void> saveSession(AuthSession session) async {
+    final prefs = await _getPrefs();
+    await prefs.setString(_keySession, jsonEncode(session.toJson()));
+  }
+
+  /// Read the stored auth session, or `null` if none.
+  static Future<AuthSession?> getSession() async {
+    final prefs = await _getPrefs();
+    final sessionJson = prefs.getString(_keySession);
+    if (sessionJson == null) return null;
+    return AuthSession.fromJson(
+      jsonDecode(sessionJson) as Map<String, dynamic>,
+    );
+  }
+
+  /// Clear the auth session (logout).
+  static Future<void> clearSession() async {
+    final prefs = await _getPrefs();
+    await prefs.remove(_keySession);
   }
 
   // ---------------------------------------------------------------------------

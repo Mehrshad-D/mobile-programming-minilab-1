@@ -1,5 +1,14 @@
 import 'package:flutter/material.dart';
 
+/// Server routes from the spec, used as the `Location` of post-login redirects
+/// (section 5.3) and to model the real endpoint paths.
+class ApiRoutes {
+  ApiRoutes._();
+
+  static const String loginPage = '/login/user';
+  static const String home = '/';
+}
+
 /// Color palette inspired by Jobinja's brand (teal/green).
 class AppColors {
   AppColors._();
@@ -47,6 +56,7 @@ class AppStrings {
   static const String noAccount = 'حساب کاربری ندارید؟';
   static const String haveAccount = 'قبلاً ثبت‌نام کرده‌اید؟';
   static const String welcomeBack = 'خوش آمدید';
+  static const String rememberMe = 'مرا به خاطر بسپار';
   static const String createAccount = 'ساخت حساب کاربری';
 
   // Home / Jobs

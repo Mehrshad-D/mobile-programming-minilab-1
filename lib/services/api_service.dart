@@ -1,5 +1,6 @@
 import 'dart:io';
 import '../models/api_response.dart';
+import '../models/auth_session.dart';
 import '../models/company.dart';
 import '../models/job.dart';
 import '../models/job_category.dart';
@@ -7,6 +8,7 @@ import '../models/job_filters.dart';
 import '../models/job_search_meta.dart';
 import '../models/job_skill.dart';
 import '../models/login_request.dart';
+import '../models/login_result.dart';
 import '../models/province.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
@@ -19,9 +21,19 @@ import '../models/feedback.dart';
 /// Views never call this directly — they go through presenters.
 abstract class ApiService {
   // ---------------------------------------------------------------------------
-  // Authentication
+  // Authentication (Section 5.3 — Sanctum Cookie/CSRF flow)
   // ---------------------------------------------------------------------------
-  Future<User> login(LoginRequest request);
+
+  /// `GET /login/user` — loads the login page and returns the CSRF token plus
+  /// session cookies (`JSESSID`, `XSRF-TOKEN`). Must be called before
+  /// [submitLogin] so the CSRF token is available.
+  Future<AuthSession> getLoginPage();
+
+  /// `POST /login/user` — submits the form-urlencoded login request and returns
+  /// a [LoginResult] modelling the 302 redirect (home on success, back to the
+  /// login page on failure). Throws [ApiException] with 419 on CSRF mismatch.
+  Future<LoginResult> submitLogin(LoginRequest request);
+
   Future<User> signup(SignupRequest request);
   Future<void> logout();
   User? get currentUser;

@@ -25,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen> implements AuthView {
   late final AuthPresenter _presenter;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _rememberMe = false;
 
   @override
   void initState() {
@@ -44,6 +45,7 @@ class _LoginScreenState extends State<LoginScreen> implements AuthView {
       _presenter.login(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        rememberMe: _rememberMe,
       );
     }
   }
@@ -114,7 +116,18 @@ class _LoginScreenState extends State<LoginScreen> implements AuthView {
                       ),
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _rememberMe,
+                        activeColor: AppColors.primary,
+                        onChanged: (value) =>
+                            setState(() => _rememberMe = value ?? false),
+                      ),
+                      const Text(AppStrings.rememberMe),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
                   CustomButton(
                     label: AppStrings.login,
                     isLoading: _isLoading,

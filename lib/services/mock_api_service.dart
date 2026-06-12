@@ -1,4 +1,7 @@
+import 'dart:io';
+import 'dart:math';
 import '../models/api_response.dart';
+import '../models/auth_session.dart';
 import '../models/company.dart';
 import '../models/job.dart';
 import '../models/job_category.dart';
@@ -6,11 +9,11 @@ import '../models/job_filters.dart';
 import '../models/job_search_meta.dart';
 import '../models/job_skill.dart';
 import '../models/login_request.dart';
+import '../models/login_result.dart';
 import '../models/province.dart';
 import '../models/signup_request.dart';
 import '../models/user.dart';
 import 'api_service.dart';
-import 'dart:io';
 import 'storage_service.dart';
 import '../models/resume.dart';
 import '../models/application.dart';
@@ -35,6 +38,9 @@ class MockApiService implements ApiService {
   User? _currentUser;
   final Set<String> _appliedJobIds = <String>{};
 
+  /// In-memory cookie jar holding the active Sanctum session (section 5.3).
+  AuthSession? _session;
+
   // Private constructor
   MockApiService._internal() {
     _loadPersistedUser();
@@ -42,6 +48,7 @@ class MockApiService implements ApiService {
 
   Future<void> _loadPersistedUser() async {
     _currentUser = await StorageService.getCurrentUser();
+    _session = await StorageService.getSession();
     if (_currentUser != null) {
       final jobIds = await StorageService.getAppliedJobs(_currentUser!.id.toString());
       _appliedJobIds.addAll(jobIds);
@@ -55,26 +62,72 @@ class MockApiService implements ApiService {
   // Authentication
   // ---------------------------------------------------------------------------
 
+  /// GET /login/user — simulates loading the login page. Issues a fresh CSRF
+  /// token (the `<meta name="csrf-token">` value) plus `JSESSID` and
+  /// `XSRF-TOKEN` cookies, and stores them in the in-memory cookie jar.
   @override
-  Future<User> login(LoginRequest request) async {
+  Future<AuthSession> getLoginPage() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final session = AuthSession(
+      csrfToken: _randomToken(40),
+      jsessid: _randomToken(32),
+      xsrfToken: _randomToken(40),
+    );
+    _session = session;
+    await StorageService.saveSession(session);
+    return session;
+  }
+
+  /// POST /login/user — simulates the form-urlencoded login submission.
+  ///
+  /// Mirrors the Sanctum behaviour: the `_token` must match the CSRF token
+  /// issued by [getLoginPage] (else 419), then credentials are checked. Returns
+  /// a [LoginResult] modelling the 302 redirect rather than throwing on bad
+  /// credentials, matching the spec (success → home, failure → /login/user).
+  @override
+  Future<LoginResult> submitLogin(LoginRequest request) async {
     await Future.delayed(_latency);
-    
-    // Validate credentials with the stored password
-    final user = await StorageService.validateLogin(request.email, request.password);
-    
-    if (user == null) {
-      throw ApiException('ایمیل یا رمز عبور اشتباه است', statusCode: 401);
+
+    // Cookie jar / CSRF validation: the session must exist and the submitted
+    // `_token` must match the issued CSRF token.
+    final session = _session;
+    if (session == null || request.token != session.csrfToken) {
+      throw ApiException(
+        'نشست شما منقضی شده است. صفحه را تازه کرده و دوباره تلاش کنید.',
+        statusCode: 419,
+      );
     }
-    
+
+    // Credential check (identifier == email).
+    final user = await StorageService.validateLogin(
+      request.identifier,
+      request.password,
+    );
+    if (user == null) {
+      // 302 Redirect → /login/user
+      return LoginResult.failure();
+    }
+
     _currentUser = user;
     await StorageService.saveCurrentUser(user);
-    
-    // Load applied jobs
+
+    // Load applied jobs for this user.
     final jobIds = await StorageService.getAppliedJobs(user.id.toString());
-    _appliedJobIds.clear();
-    _appliedJobIds.addAll(jobIds);
-    
-    return _currentUser!;
+    _appliedJobIds
+      ..clear()
+      ..addAll(jobIds);
+
+    // 302 Redirect → homepage
+    return LoginResult.success(user);
+  }
+
+  /// Generates a random URL-safe token, used for the CSRF token and cookies.
+  String _randomToken(int length) {
+    const chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    final rand = Random();
+    return List.generate(length, (_) => chars[rand.nextInt(chars.length)])
+        .join();
   }
 
 @override
@@ -117,8 +170,10 @@ Future<User> signup(SignupRequest request) async {
   Future<void> logout() async {
     await Future.delayed(const Duration(milliseconds: 300));
     _currentUser = null;
+    _session = null;
     _appliedJobIds.clear();
     await StorageService.clearCurrentUser();
+    await StorageService.clearSession();
   }
 
   // ---------------------------------------------------------------------------
