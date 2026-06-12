@@ -47,11 +47,15 @@ class CoverLetter {
   final DateTime createdAt;
   final DateTime? updatedAt;
 
+  /// Optional URL of an uploaded cover-letter document (multipart upload).
+  final String? fileUrl;
+
   const CoverLetter({
     required this.id,
     required this.content,
     required this.createdAt,
     this.updatedAt,
+    this.fileUrl,
   });
 
   factory CoverLetter.fromJson(Map<String, dynamic> json) {
@@ -62,6 +66,7 @@ class CoverLetter {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
+      fileUrl: json['file_url'] as String?,
     );
   }
 
@@ -70,6 +75,7 @@ class CoverLetter {
     'content': content,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt?.toIso8601String(),
+    'file_url': fileUrl,
   };
 }
 
@@ -112,6 +118,21 @@ class JobApplication {
     'cover_letter': coverLetter?.toJson(),
     'resume_url': resumeUrl,
   };
+
+  JobApplication copyWith({
+    ApplicationStatus? status,
+    CoverLetter? coverLetter,
+    String? resumeUrl,
+  }) {
+    return JobApplication(
+      id: id,
+      job: job,
+      appliedAt: appliedAt,
+      status: status ?? this.status,
+      coverLetter: coverLetter ?? this.coverLetter,
+      resumeUrl: resumeUrl ?? this.resumeUrl,
+    );
+  }
 
   static ApplicationStatus _parseStatus(String status) {
     switch (status) {

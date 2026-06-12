@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../models/application.dart';
 import '../services/api_service.dart';
 import '../utils/constants.dart';
@@ -103,6 +105,20 @@ class ApplicationDetailPresenter {
       _view.showError(e.message);
     } catch (_) {
       _view.showError('خطا در ویرایش کاورلتر');
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  Future<void> uploadCoverLetterFile(String applicationId, File file) async {
+    _view.showLoading();
+    try {
+      final updated = await _api.uploadCoverLetterFile(applicationId, file);
+      _view.onCoverLetterUploaded(updated);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در آپلود فایل کاورلتر');
     } finally {
       _view.hideLoading();
     }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/application.dart';
 import '../models/auth_session.dart';
 import '../models/resume.dart';
 import '../models/user.dart';
@@ -182,5 +183,38 @@ class StorageService {
   static Future<void> clearResume(String userId) async {
     final prefs = await _getPrefs();
     await prefs.remove(_resumeKey(userId));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Applications persistence (Section 5.5)
+  // ---------------------------------------------------------------------------
+
+  static String _applicationsKey(String userId) => 'applications_$userId';
+
+  /// Persist the user's applications so they survive app restarts.
+  static Future<void> saveApplications(
+    String userId,
+    List<JobApplication> applications,
+  ) async {
+    final prefs = await _getPrefs();
+    final encoded = jsonEncode(applications.map((a) => a.toJson()).toList());
+    await prefs.setString(_applicationsKey(userId), encoded);
+  }
+
+  /// Load the persisted applications for a user, or an empty list if none.
+  static Future<List<JobApplication>> getApplications(String userId) async {
+    final prefs = await _getPrefs();
+    final json = prefs.getString(_applicationsKey(userId));
+    if (json == null) return [];
+    final List<dynamic> decoded = jsonDecode(json);
+    return decoded
+        .map((e) => JobApplication.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Remove all persisted applications for a user.
+  static Future<void> clearApplications(String userId) async {
+    final prefs = await _getPrefs();
+    await prefs.remove(_applicationsKey(userId));
   }
 }

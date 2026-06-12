@@ -57,6 +57,7 @@ class MockApiService implements ApiService {
       if (_currentResume?.slug != null) {
         _usedSlugs.add(_currentResume!.slug!);
       }
+      await _loadApplicationsForCurrentUser();
     }
   }
 
@@ -122,6 +123,7 @@ class MockApiService implements ApiService {
       ..clear()
       ..addAll(jobIds);
     await _loadResumeForCurrentUser();
+    await _loadApplicationsForCurrentUser();
 
     // 302 Redirect → homepage
     return LoginResult.success(user);
@@ -180,6 +182,7 @@ Future<User> signup(SignupRequest request) async {
     _session = null;
     _currentResume = null;
     _appliedJobIds.clear();
+    _applications.clear();
     await StorageService.clearCurrentUser();
     await StorageService.clearSession();
   }
@@ -837,92 +840,201 @@ Future<User> signup(SignupRequest request) async {
   // Section 5.5: Applications
   // ---------------------------------------------------------------------------
 
+  /// Working set of the *authenticated* user's applications (keyed by app id).
+  /// Loaded on login and cleared on logout so users never see each other's data.
   final Map<String, JobApplication> _applications = {};
-  final Map<String, String> _coverLetters = {};
+
+  /// Session-global owner registry (appId -> userId). Lets us return 403 for an
+  /// application that exists but belongs to someone else, vs 404 for unknown ids.
+  final Map<String, String> _applicationOwners = {};
+
+  static const int _maxCoverLetterChars = 5000;
+  static const int _maxCoverLetterFileBytes = 5 * 1024 * 1024; // 5 MB
+  static const List<String> _coverLetterFileExtensions = ['pdf', 'doc', 'docx'];
+
+  /// Auth + ownership gate shared by every application endpoint.
+  /// Throws 401 (not logged in), 403 (foreign application) or 404 (unknown id).
+  JobApplication _ownedApplication(String applicationId) {
+    _requireLogin();
+    final app = _applications[applicationId];
+    if (app != null) return app;
+    if (_applicationOwners.containsKey(applicationId)) {
+      throw const ApiException(
+        'دسترسی به این درخواست مجاز نیست',
+        statusCode: 403,
+      );
+    }
+    throw const ApiException('درخواست مورد نظر یافت نشد', statusCode: 404);
+  }
+
+  Future<void> _persistApplications() async {
+    final user = _currentUser;
+    if (user == null) return;
+    await StorageService.saveApplications(
+      user.id.toString(),
+      _applications.values.toList(),
+    );
+  }
+
+  /// Loads the authenticated user's applications from storage into the working
+  /// set and registers ownership. Called on login and on cold start.
+  Future<void> _loadApplicationsForCurrentUser() async {
+    _applications.clear();
+    final user = _currentUser;
+    if (user == null) return;
+    final userId = user.id.toString();
+    final apps = await StorageService.getApplications(userId);
+    for (final app in apps) {
+      _applications[app.id] = app;
+      _applicationOwners[app.id] = userId;
+    }
+  }
+
+  String _validateCoverLetterContent(String content) {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty) {
+      throw const ApiException(
+        'متن کاورلتر نمی‌تواند خالی باشد',
+        statusCode: 422,
+      );
+    }
+    if (trimmed.length > _maxCoverLetterChars) {
+      throw const ApiException(
+        'متن کاورلتر بیش از حد مجاز است',
+        statusCode: 422,
+      );
+    }
+    return trimmed;
+  }
 
   @override
   Future<List<JobApplication>> getApplications() async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای مشاهده درخواست‌ها ابتدا وارد شوید', statusCode: 401);
-    }
-    
-    return _applications.values
-        .where((app) => app.job.id.isNotEmpty)
-        .toList();
+    _requireLogin();
+    final apps = _applications.values.toList()
+      ..sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
+    return apps;
   }
 
   @override
   Future<JobApplication> getApplicationDetail(String applicationId) async {
     await Future.delayed(_latency);
-    
-    final app = _applications[applicationId];
-    if (app == null) {
-      throw ApiException('درخواست مورد نظر یافت نشد', statusCode: 404);
-    }
-    
-    return app;
+    return _ownedApplication(applicationId);
   }
 
   @override
-  Future<JobApplication> uploadCoverLetter(String applicationId, String content) async {
+  Future<JobApplication> uploadCoverLetter(
+    String applicationId,
+    String content,
+  ) async {
     await Future.delayed(_latency);
-    
-    final app = _applications[applicationId];
-    if (app == null) {
-      throw ApiException('درخواست مورد نظر یافت نشد', statusCode: 404);
-    }
-    
+    final app = _ownedApplication(applicationId);
+    final clean = _validateCoverLetterContent(content);
+
+    final existing = app.coverLetter;
     final coverLetter = CoverLetter(
-      id: 'cl_${DateTime.now().millisecondsSinceEpoch}',
-      content: content,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
+      id: existing?.id ?? 'cl_${DateTime.now().millisecondsSinceEpoch}',
+      content: clean,
+      createdAt: existing?.createdAt ?? DateTime.now(),
+      updatedAt: existing != null ? DateTime.now() : null,
+      fileUrl: existing?.fileUrl,
     );
-    
-    _coverLetters[applicationId] = content;
-    
-    final updatedApp = JobApplication(
-      id: app.id,
-      job: app.job,
-      appliedAt: app.appliedAt,
-      status: app.status,
-      coverLetter: coverLetter,
-      resumeUrl: app.resumeUrl,
-    );
-    
+
+    final updatedApp = app.copyWith(coverLetter: coverLetter);
     _applications[applicationId] = updatedApp;
+    await _persistApplications();
     return updatedApp;
   }
 
   @override
-  Future<JobApplication> updateCoverLetter(String applicationId, String content) async {
-    return uploadCoverLetter(applicationId, content);
+  Future<JobApplication> updateCoverLetter(
+    String applicationId,
+    String content,
+  ) async {
+    await Future.delayed(_latency);
+    final app = _ownedApplication(applicationId);
+    final existing = app.coverLetter;
+    if (existing == null) {
+      throw const ApiException(
+        'کاورلتری برای ویرایش وجود ندارد',
+        statusCode: 404,
+      );
+    }
+    final clean = _validateCoverLetterContent(content);
+
+    final coverLetter = CoverLetter(
+      id: existing.id,
+      content: clean,
+      createdAt: existing.createdAt,
+      updatedAt: DateTime.now(),
+      fileUrl: existing.fileUrl,
+    );
+
+    final updatedApp = app.copyWith(coverLetter: coverLetter);
+    _applications[applicationId] = updatedApp;
+    await _persistApplications();
+    return updatedApp;
+  }
+
+  @override
+  Future<JobApplication> uploadCoverLetterFile(
+    String applicationId,
+    File file,
+  ) async {
+    await Future.delayed(_latency);
+    final app = _ownedApplication(applicationId);
+    await _validateUpload(
+      file,
+      allowedExtensions: _coverLetterFileExtensions,
+      maxBytes: _maxCoverLetterFileBytes,
+    );
+
+    final ext = file.path.split('.').last.toLowerCase();
+    final fileUrl =
+        'https://cdn.jobinja.mock/cover-letters/$applicationId-${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+    final existing = app.coverLetter;
+    final coverLetter = CoverLetter(
+      id: existing?.id ?? 'cl_${DateTime.now().millisecondsSinceEpoch}',
+      content: existing?.content ?? '',
+      createdAt: existing?.createdAt ?? DateTime.now(),
+      updatedAt: existing != null ? DateTime.now() : null,
+      fileUrl: fileUrl,
+    );
+
+    final updatedApp = app.copyWith(coverLetter: coverLetter);
+    _applications[applicationId] = updatedApp;
+    await _persistApplications();
+    return updatedApp;
   }
 
   @override
   Future<void> cancelApplication(String applicationId) async {
     await Future.delayed(_latency);
-    
-    final app = _applications[applicationId];
-    if (app == null) {
-      throw ApiException('درخواست مورد نظر یافت نشد', statusCode: 404);
+    final app = _ownedApplication(applicationId);
+
+    // Idempotent: cancelling an already-cancelled application is a no-op.
+    if (app.status == ApplicationStatus.cancelled) return;
+
+    // Only submitted/under-review applications can be cancelled.
+    if (app.status != ApplicationStatus.pending &&
+        app.status != ApplicationStatus.reviewing) {
+      throw const ApiException(
+        'این درخواست در وضعیت فعلی قابل لغو نیست',
+        statusCode: 422,
+      );
     }
-    
-    final cancelledApp = JobApplication(
-      id: app.id,
-      job: app.job,
-      appliedAt: app.appliedAt,
-      status: ApplicationStatus.cancelled,
-      coverLetter: app.coverLetter,
-      resumeUrl: app.resumeUrl,
-    );
-    
-    _applications[applicationId] = cancelledApp;
-    
-    // Also remove from applied jobs
+
+    _applications[applicationId] =
+        app.copyWith(status: ApplicationStatus.cancelled);
+
+    // A cancelled application is no longer an active applied job.
     _appliedJobIds.remove(app.job.id);
+    await StorageService.saveAppliedJobs(
+      _currentUser!.id.toString(),
+      _appliedJobIds.toList(),
+    );
+    await _persistApplications();
   }
 
   // ---------------------------------------------------------------------------
@@ -1045,7 +1157,7 @@ Future<User> signup(SignupRequest request) async {
     _appliedJobIds.add(jobId);
     await StorageService.addAppliedJob(_currentUser!.id.toString(), jobId);
     
-    // Create application record
+    // Create application record owned by the authenticated user.
     final job = _jobs.firstWhere((j) => j.id == jobId);
     final application = JobApplication(
       id: 'app_${DateTime.now().millisecondsSinceEpoch}',
@@ -1056,6 +1168,8 @@ Future<User> signup(SignupRequest request) async {
     );
     
     _applications[application.id] = application;
+    _applicationOwners[application.id] = _currentUser!.id.toString();
+    await _persistApplications();
   }
 
 

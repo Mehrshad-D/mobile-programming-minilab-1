@@ -153,6 +153,10 @@ abstract class ApiService {
   Future<List<JobApplication>> getApplications();
   Future<JobApplication> getApplicationDetail(String applicationId);
   Future<JobApplication> uploadCoverLetter(String applicationId, String content);
+
+  /// `POST .../applications/{app_id}/cover-letter-upload` — multipart upload of
+  /// a cover-letter document (pdf/doc/docx). Validated for type and size.
+  Future<JobApplication> uploadCoverLetterFile(String applicationId, File file);
   Future<JobApplication> updateCoverLetter(String applicationId, String content);
   Future<void> cancelApplication(String applicationId);
 
