@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/resume.dart';
 import '../presenters/resume_presenter.dart';
 import '../services/mock_api_service.dart';
@@ -92,12 +93,51 @@ class _ResumeBuilderScreenState extends State<ResumeBuilderScreen>
   }
 
   @override
+  void onResumeLink(String link) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('لینک عمومی رزومه'),
+        content: SelectableText(
+          link,
+          style: const TextStyle(color: AppColors.primary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: link));
+              if (!context.mounted) return;
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('لینک کپی شد')),
+              );
+            },
+            child: const Text('کپی لینک'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('ساخت رزومه'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share_outlined),
+            tooltip: 'لینک عمومی رزومه',
+            onPressed: _resume == null ? null : _presenter.loadResumeLink,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: _tabs.map((tab) => Tab(text: tab)).toList(),

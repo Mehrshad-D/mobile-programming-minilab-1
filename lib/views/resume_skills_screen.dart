@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../models/job_skill.dart';
+import '../presenters/skill_search_presenter.dart';
+import '../services/mock_api_service.dart';
 import '../utils/constants.dart';
 
 class ResumeSkillsScreen extends StatefulWidget {
@@ -10,47 +15,45 @@ class ResumeSkillsScreen extends StatefulWidget {
   State<ResumeSkillsScreen> createState() => _ResumeSkillsScreenState();
 }
 
-class _ResumeSkillsScreenState extends State<ResumeSkillsScreen> {
+class _ResumeSkillsScreenState extends State<ResumeSkillsScreen>
+    implements SkillSearchView {
   late List<String> _skills;
   final TextEditingController _skillController = TextEditingController();
+  late final SkillSearchPresenter _presenter;
 
-  final List<String> _suggestedSkills = [
-    'Flutter',
-    'Dart',
-    'Python',
-    'Java',
-    'JavaScript',
-    'React',
-    'Node.js',
-    'Django',
-    'SQL',
-    'Git',
-    'Docker',
-    'Kubernetes',
-    'AWS',
-    'Figma',
-    'UI/UX',
-    'Product Management',
-    'Agile',
-    'Scrum',
-    'TDD',
-    'REST API',
-    'GraphQL',
-    'Firebase',
-    'MongoDB',
-    'PostgreSQL',
-  ];
+  /// Live suggestions returned by the skills API.
+  List<String> _suggestedSkills = [];
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     _skills = List.from(widget.skills);
+    _presenter = SkillSearchPresenter(this, MockApiService());
+    _skillController.addListener(_onQueryChanged);
+    _presenter.search(''); // initial suggestions
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _skillController.removeListener(_onQueryChanged);
     _skillController.dispose();
     super.dispose();
+  }
+
+  void _onQueryChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _presenter.search(_skillController.text.trim());
+    });
+  }
+
+  @override
+  void showSkillSuggestions(List<JobSkill> suggestions) {
+    if (mounted) {
+      setState(() => _suggestedSkills = suggestions.map((s) => s.name).toList());
+    }
   }
 
   @override

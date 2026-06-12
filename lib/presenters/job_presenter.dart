@@ -14,6 +14,7 @@ abstract class JobListView {
   void showLoadingMore(bool isLoadingMore);
   void showLocations(List<String> locations);
   void showFilterMeta(FilterMeta meta);
+  void showLastAppliedJob(Job? job);
 }
 
 /// Drives the job list: search, pull-to-refresh and incremental pagination.
@@ -40,6 +41,17 @@ class JobListPresenter {
       _view.showLocations(locations);
     } catch (_) {
       // The filter is optional; ignore failures silently.
+    }
+  }
+
+  /// Loads the most recent job the user applied to, to show a "continue" card.
+  /// Non-critical: silently ignored if unavailable or not logged in.
+  Future<void> loadLastAppliedJob() async {
+    try {
+      final job = await _api.getLastAppliedJob();
+      _view.showLastAppliedJob(job);
+    } catch (_) {
+      _view.showLastAppliedJob(null);
     }
   }
 
@@ -122,6 +134,7 @@ abstract class JobDetailView {
   void hideLoading();
   void showError(String message);
   void showJob(Job job);
+  void showApplyData(Map<String, dynamic> applyData);
   void onApplied();
 }
 
@@ -137,12 +150,24 @@ class JobDetailPresenter {
     try {
       final job = await _api.getJobById(id);
       _view.showJob(job);
+      await _loadApplyData(job);
     } on ApiException catch (e) {
       _view.showError(e.message);
     } catch (_) {
       _view.showError(AppStrings.networkError);
     } finally {
       _view.hideLoading();
+    }
+  }
+
+  /// Fetches apply eligibility (already applied? has resume?) for the job.
+  /// Non-critical: failures (e.g. not logged in) are ignored silently.
+  Future<void> _loadApplyData(Job job) async {
+    try {
+      final data = await _api.getCompanyApplyData(job.company.id, job.id);
+      _view.showApplyData(data);
+    } catch (_) {
+      // Eligibility hints are optional; keep the default apply button.
     }
   }
 

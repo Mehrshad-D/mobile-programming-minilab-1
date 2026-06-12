@@ -64,6 +64,23 @@ class JobAlertPresenter {
     }
   }
 
+  Future<void> updateAlert(String alertId, JobAlert alert) async {
+    _view.showLoading();
+    try {
+      final updated = await _api.updateJobAlert(alertId, alert);
+      _view.onAlertUpdated(updated);
+      ScaffoldMessenger.of(_view.getContext()).showSnackBar(
+        const SnackBar(content: Text('هشدار با موفقیت ویرایش شد')),
+      );
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در ویرایش هشدار');
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
   Future<void> deleteAlert(String alertId) async {
     _view.showLoading();
     try {

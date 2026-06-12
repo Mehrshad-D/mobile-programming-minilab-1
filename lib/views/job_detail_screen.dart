@@ -25,6 +25,8 @@ class _JobDetailScreenState extends State<JobDetailScreen>
   Job? _job;
   bool _isLoading = false;
   bool _isApplied = false;
+  bool _canApply = true;
+  bool _hasResume = true;
   String? _errorMessage;
 
   @override
@@ -67,6 +69,16 @@ class _JobDetailScreenState extends State<JobDetailScreen>
   @override
   void showJob(Job job) {
     if (mounted) setState(() => _job = job);
+  }
+
+  @override
+  void showApplyData(Map<String, dynamic> applyData) {
+    if (!mounted) return;
+    setState(() {
+      _isApplied = applyData['already_applied'] as bool? ?? _isApplied;
+      _hasResume = applyData['has_resume'] as bool? ?? true;
+      _canApply = applyData['can_apply'] as bool? ?? true;
+    });
   }
 
   @override
@@ -188,14 +200,47 @@ class _JobDetailScreenState extends State<JobDetailScreen>
   }
 
   Widget _buildApplyBar() {
+    final needsResume = !_isApplied && !_hasResume;
+    final String label;
+    if (_isApplied) {
+      label = AppStrings.applied;
+    } else if (needsResume) {
+      label = 'برای ارسال، ابتدا رزومه بسازید';
+    } else {
+      label = AppStrings.apply;
+    }
+    final canPress = !_isApplied && _canApply;
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
-        child: CustomButton(
-          label: _isApplied ? AppStrings.applied : AppStrings.apply,
-          icon: _isApplied ? Icons.check : Icons.send,
-          onPressed:
-              _isApplied ? null : () => _presenter.apply(widget.jobId),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (needsResume)
+              const Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 16, color: AppColors.textSecondary),
+                    SizedBox(width: AppSpacing.xs),
+                    Expanded(
+                      child: Text(
+                        'برای ارسال درخواست به یک رزومه فعال نیاز دارید.',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            CustomButton(
+              label: label,
+              icon: _isApplied ? Icons.check : Icons.send,
+              onPressed: canPress ? () => _presenter.apply(widget.jobId) : null,
+            ),
+          ],
         ),
       ),
     );

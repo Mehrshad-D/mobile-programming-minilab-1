@@ -12,6 +12,7 @@ abstract class ResumeView {
   void showResume(Resume resume);
   void onResumeUpdated(Resume resume);
   void onScoreUpdated(int score);
+  void onResumeLink(String link);
 }
 
 /// Manages resume/CV builder operations
@@ -186,6 +187,20 @@ class ResumePresenter {
       _view.showError(e.message);
     } catch (_) {
       _view.showError('خطا در به‌روزرسانی مهارت‌ها');
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  Future<void> loadResumeLink() async {
+    _view.showLoading();
+    try {
+      final link = await _api.getResumeLink();
+      _view.onResumeLink(link);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در دریافت لینک رزومه');
     } finally {
       _view.hideLoading();
     }

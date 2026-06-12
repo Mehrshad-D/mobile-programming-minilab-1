@@ -199,8 +199,7 @@ class _JobAlertsScreenState extends State<JobAlertsScreen>
     );
 
     if (updatedAlert != null) {
-      // Update logic would go here
-      await _presenter.loadAlerts();
+      await _presenter.updateAlert(alert.id, updatedAlert);
     }
   }
 

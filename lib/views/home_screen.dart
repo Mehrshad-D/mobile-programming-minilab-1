@@ -26,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
 
   List<Job> _jobs = [];
   List<String> _locations = [];
+  Job? _lastAppliedJob;
   FilterMeta _filterMeta = FilterMeta.empty;
 
   /// Single source of truth for the active query (everything except the
@@ -44,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
     _presenter.loadLocations();
     _presenter.loadFilterMeta();
     _presenter.loadJobs();
+    _presenter.loadLastAppliedJob();
   }
 
   String? get _selectedLocation =>
@@ -153,6 +155,11 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
   }
 
   @override
+  void showLastAppliedJob(Job? job) {
+    if (mounted) setState(() => _lastAppliedJob = job);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -180,8 +187,54 @@ class _HomeScreenState extends State<HomeScreen> implements JobListView {
       body: Column(
         children: [
           _buildSearchBar(),
+          if (_lastAppliedJob != null) _buildLastAppliedBanner(_lastAppliedJob!),
           Expanded(child: _buildBody()),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLastAppliedBanner(Job job) {
+    return Material(
+      color: AppColors.primary.withValues(alpha: 0.08),
+      child: InkWell(
+        onTap: () => _openJob(job),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.history, size: 18, color: AppColors.primary),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'آخرین درخواست شما',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    Text(
+                      job.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_left, color: AppColors.textSecondary),
+            ],
+          ),
+        ),
       ),
     );
   }
