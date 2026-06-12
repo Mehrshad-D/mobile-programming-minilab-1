@@ -40,16 +40,32 @@ class AvatarWidget extends StatelessWidget {
       radius: radius,
       backgroundColor: backgroundColor ?? AppColors.primary.withValues(alpha: 0.12),
       child: avatarUrl != null
-          ? ClipOval(
-              child: Image.network(
-                avatarUrl!,
-                width: radius * 2,
-                height: radius * 2,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildInitials(),
-              ),
-            )
+          ? ClipOval(child: _buildAvatarImage(avatarUrl!))
           : _buildInitials(),
+    );
+  }
+
+  /// Renders either a remote URL or a locally-picked file. The mock upload
+  /// stores the picked image's local path (it can't serve a real URL), so we
+  /// must use [Image.file] for non-http values.
+  Widget _buildAvatarImage(String source) {
+    final size = radius * 2;
+    final isRemote = source.startsWith('http');
+    if (isRemote) {
+      return Image.network(
+        source,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildInitials(),
+      );
+    }
+    return Image.file(
+      File(source),
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => _buildInitials(),
     );
   }
 

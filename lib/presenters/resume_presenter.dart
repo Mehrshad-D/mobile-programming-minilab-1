@@ -13,6 +13,8 @@ abstract class ResumeView {
   void onResumeUpdated(Resume resume);
   void onScoreUpdated(int score);
   void onResumeLink(String link);
+  void onResumesLoaded(List<Resume> resumes);
+  void onTranslationLoaded(Map<String, dynamic> translation);
 }
 
 /// Manages resume/CV builder operations
@@ -26,6 +28,21 @@ class ResumePresenter {
     _view.showLoading();
     try {
       final resume = await _api.getResume();
+      _view.showResume(resume);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError(AppStrings.networkError);
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  /// Loads a specific resume by id (used when editing one of several resumes).
+  Future<void> loadResumeById(String cvId) async {
+    _view.showLoading();
+    try {
+      final resume = await _api.getResumeById(cvId);
       _view.showResume(resume);
     } on ApiException catch (e) {
       _view.showError(e.message);
@@ -187,6 +204,34 @@ class ResumePresenter {
       _view.showError(e.message);
     } catch (_) {
       _view.showError('خطا در به‌روزرسانی مهارت‌ها');
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  Future<void> loadResumes() async {
+    _view.showLoading();
+    try {
+      final resumes = await _api.getResumes();
+      _view.onResumesLoaded(resumes);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در دریافت لیست رزومه‌ها');
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  Future<void> loadTranslation(String lang) async {
+    _view.showLoading();
+    try {
+      final translation = await _api.getResumeTranslation(lang);
+      _view.onTranslationLoaded(translation);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در دریافت ترجمه رزومه');
     } finally {
       _view.hideLoading();
     }

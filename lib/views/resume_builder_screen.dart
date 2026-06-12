@@ -6,12 +6,17 @@ import '../services/mock_api_service.dart';
 import '../utils/constants.dart';
 import '../widgets/loading_widget.dart';
 import 'resume_education_screen.dart';
+import 'resume_list_screen.dart';
 import 'resume_experience_screen.dart';
 import 'resume_language_screen.dart';
 import 'resume_skills_screen.dart';
 
 class ResumeBuilderScreen extends StatefulWidget {
-  const ResumeBuilderScreen({super.key});
+  /// When provided, edits this specific resume; otherwise the primary/active
+  /// resume is loaded (creating a default one if none exists).
+  final String? resumeId;
+
+  const ResumeBuilderScreen({super.key, this.resumeId});
 
   @override
   State<ResumeBuilderScreen> createState() => _ResumeBuilderScreenState();
@@ -32,6 +37,7 @@ class _ResumeBuilderScreenState extends State<ResumeBuilderScreen>
     'سوابق شغلی',
     'زبان‌ها',
     'مهارت‌ها',
+    'تنظیمات',
   ];
 
   @override
@@ -39,7 +45,11 @@ class _ResumeBuilderScreenState extends State<ResumeBuilderScreen>
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
     _presenter = ResumePresenter(this, MockApiService());
-    _presenter.loadResume();
+    if (widget.resumeId != null) {
+      _presenter.loadResumeById(widget.resumeId!);
+    } else {
+      _presenter.loadResume();
+    }
   }
 
   @override
@@ -125,6 +135,85 @@ class _ResumeBuilderScreenState extends State<ResumeBuilderScreen>
   }
 
   @override
+  void onResumesLoaded(List<Resume> resumes) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('رزومه‌های من (${resumes.length})'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: resumes.isEmpty
+              ? [const Text('هنوز رزومه‌ای ندارید')]
+              : resumes
+                  .map(
+                    (r) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.description_outlined,
+                          color: AppColors.primary),
+                      title: Text(r.name),
+                      subtitle: Text('${r.slug ?? '-'} • ${r.score}%'),
+                    ),
+                  )
+                  .toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void onTranslationLoaded(Map<String, dynamic> translation) {
+    if (!mounted) return;
+    final skills = (translation['skills'] as List?)?.join('، ') ?? '';
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('ترجمه رزومه (${translation['lang']})'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _translationRow('نام', translation['name']?.toString()),
+              _translationRow('درباره', translation['about']?.toString()),
+              _translationRow('مهارت‌ها', skills),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _translationRow(String label, String? value) {
+    if (value == null || value.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary)),
+          Text(value),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -195,6 +284,7 @@ class _ResumeBuilderScreenState extends State<ResumeBuilderScreen>
               _buildExperienceSection(resume),
               _buildLanguageSection(resume),
               _buildSkillsSection(resume),
+              _buildSettingsSection(resume),
             ],
           ),
         ),
@@ -506,6 +596,117 @@ class _ResumeBuilderScreenState extends State<ResumeBuilderScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsSection(Resume resume) {
+    final slugController = TextEditingController(text: resume.slug ?? '');
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Slug
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('آدرس عمومی رزومه (slug)',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: AppSpacing.sm),
+                  TextField(
+                    controller: slugController,
+                    decoration: const InputDecoration(
+                      hintText: 'مثال: ali-developer',
+                      border: OutlineInputBorder(),
+                      prefixText: 'jobinja.ir/r/',
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: ElevatedButton(
+                      onPressed: () => _presenter.updateSlug(
+                        resume.id,
+                        slugController.text.trim(),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('ذخیره آدرس'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+
+          // Publicity & search toggles
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('رزومه عمومی'),
+                  subtitle: const Text('نمایش رزومه شما برای کارفرمایان'),
+                  value: resume.isPublic,
+                  activeThumbColor: AppColors.primary,
+                  onChanged: (v) => _presenter.togglePublicity(v),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('قابل جستجو'),
+                  subtitle: const Text('نمایش رزومه در نتایج جستجوی کارفرمایان'),
+                  value: resume.isSearchable,
+                  activeThumbColor: AppColors.primary,
+                  onChanged: (v) => _presenter.toggleSearchStatus(v),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+
+          // Translation / list / create
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('بیشتر',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: AppSpacing.sm),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.translate,
+                        color: AppColors.primary),
+                    title: const Text('مشاهده ترجمه انگلیسی'),
+                    trailing: const Icon(Icons.chevron_left),
+                    onTap: () => _presenter.loadTranslation('en'),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.list_alt,
+                        color: AppColors.primary),
+                    title: const Text('مدیریت رزومه‌ها'),
+                    subtitle: const Text('ساخت، انتخاب و حذف رزومه‌ها'),
+                    trailing: const Icon(Icons.chevron_left),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ResumeListScreen(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

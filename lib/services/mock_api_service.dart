@@ -53,10 +53,11 @@ class MockApiService implements ApiService {
       final userId = _currentUser!.id.toString();
       final jobIds = await StorageService.getAppliedJobs(userId);
       _appliedJobIds.addAll(jobIds);
-      _currentResume = await StorageService.getResume(userId);
-      if (_currentResume?.slug != null) {
-        _usedSlugs.add(_currentResume!.slug!);
-      }
+      _resumes
+        ..clear()
+        ..addAll(await StorageService.getResumes(userId));
+      _registerUsedSlugs();
+      _activeResumeId = _resumes.isNotEmpty ? _resumes.first.id : null;
       await _loadApplicationsForCurrentUser();
       await _loadAlertsForCurrentUser();
     }
@@ -171,7 +172,7 @@ Future<User> signup(SignupRequest request) async {
   }
   
   _currentUser = newUser;
-  _currentResume = null;
+  _clearResumes();
   await StorageService.saveCurrentUser(newUser);
   
   return _currentUser!;
@@ -182,7 +183,7 @@ Future<User> signup(SignupRequest request) async {
     await Future.delayed(const Duration(milliseconds: 300));
     _currentUser = null;
     _session = null;
-    _currentResume = null;
+    _clearResumes();
     _appliedJobIds.clear();
     _applications.clear();
     _jobAlerts.clear();
@@ -194,13 +195,14 @@ Future<User> signup(SignupRequest request) async {
   Future<void> _loadResumeForCurrentUser() async {
     final user = _currentUser;
     if (user == null) {
-      _currentResume = null;
+      _clearResumes();
       return;
     }
-    _currentResume = await StorageService.getResume(user.id.toString());
-    if (_currentResume?.slug != null) {
-      _usedSlugs.add(_currentResume!.slug!);
-    }
+    _resumes
+      ..clear()
+      ..addAll(await StorageService.getResumes(user.id.toString()));
+    _registerUsedSlugs();
+    _activeResumeId = _resumes.isNotEmpty ? _resumes.first.id : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -242,14 +244,15 @@ Future<User> signup(SignupRequest request) async {
       throw ApiException('برای آپلود عکس ابتدا وارد شوید', statusCode: 401);
     }
     
-    // In a real app, you'd upload the file to a server
-    // For mock, we'll use UI Avatars API with the user's name
-    final fakeAvatarUrl = 'https://ui-avatars.com/api/?background=00bfa5&color=fff&name=${Uri.encodeComponent(_currentUser!.name)}&size=128&rounded=true';
-    
-    _currentUser = _currentUser!.copyWith(avatarUrl: fakeAvatarUrl);
+    // A real backend would store the file and return a hosted URL. The mock
+    // can't serve files, so we keep the picked image's local path and let the
+    // UI render it with Image.file — this way the actual photo is displayed.
+    final avatarPath = imageFile.path;
+
+    _currentUser = _currentUser!.copyWith(avatarUrl: avatarPath);
     await StorageService.saveCurrentUser(_currentUser!);
-    
-    return fakeAvatarUrl;
+
+    return avatarPath;
   }
 
   @override
@@ -1336,10 +1339,73 @@ Future<User> signup(SignupRequest request) async {
   // Resume / CV Builder (Section 5.4)
   // ---------------------------------------------------------------------------
 
-  Resume? _currentResume;
+  /// All resumes owned by the signed-in user (multi-resume support).
+  final List<Resume> _resumes = <Resume>[];
+
+  /// Id of the resume currently being read/edited.
+  String? _activeResumeId;
+
+  /// Monotonic counter to help mint unique resume ids within a session.
+  int _resumeCounter = 0;
 
   /// Tracks slugs already taken (simulates server-side uniqueness check).
   final Set<String> _usedSlugs = <String>{};
+
+  /// The active resume — the one CV-builder slices read and write. The
+  /// getter/setter keep the original single-resume call sites working over the
+  /// underlying list: assigning a resume upserts it by id and makes it active.
+  Resume? get _currentResume {
+    for (final r in _resumes) {
+      if (r.id == _activeResumeId) return r;
+    }
+    return null;
+  }
+
+  set _currentResume(Resume? resume) {
+    if (resume == null) {
+      _activeResumeId = null;
+      return;
+    }
+    final idx = _resumes.indexWhere((e) => e.id == resume.id);
+    if (idx >= 0) {
+      _resumes[idx] = resume;
+    } else {
+      _resumes.add(resume);
+    }
+    _activeResumeId = resume.id;
+  }
+
+  /// Clears the signed-in user's resume state (used on logout / account
+  /// switch). [_usedSlugs] is intentionally left intact: resume slugs are
+  /// public URLs and must stay globally unique across users for this session.
+  void _clearResumes() {
+    _resumes.clear();
+    _activeResumeId = null;
+  }
+
+  /// Registers the current resumes' slugs as taken (add-only, never clears).
+  void _registerUsedSlugs() {
+    for (final r in _resumes) {
+      if (r.slug != null) _usedSlugs.add(r.slug!);
+    }
+  }
+
+  String _newResumeId() {
+    _resumeCounter++;
+    return 'resume_${_currentUser!.id}_'
+        '${DateTime.now().millisecondsSinceEpoch}_$_resumeCounter';
+  }
+
+  /// Returns a slug guaranteed not to collide with an existing one.
+  String _uniqueSlug(String base) {
+    var candidate = base;
+    var n = 1;
+    while (_usedSlugs.contains(candidate)) {
+      n++;
+      candidate = '$base-$n';
+    }
+    return candidate;
+  }
 
   static const int _maxAvatarBytes = 5 * 1024 * 1024; // 5 MB
   static const int _maxCvFileBytes = 10 * 1024 * 1024; // 10 MB
@@ -1358,23 +1424,24 @@ Future<User> signup(SignupRequest request) async {
 
   Future<Resume> _resumeForCv(String cvId) async {
     _requireLogin();
-    if (_currentResume == null) {
+    if (_resumes.isEmpty) {
       throw const ApiException('رزومه یافت نشد', statusCode: 404);
     }
-    if (_currentResume!.id != cvId) {
+    final idx = _resumes.indexWhere((r) => r.id == cvId);
+    if (idx < 0) {
       throw const ApiException(
         'دسترسی به این رزومه مجاز نیست',
         statusCode: 403,
       );
     }
-    return _currentResume!;
+    _activeResumeId = cvId;
+    return _resumes[idx];
   }
 
   Future<void> _persistResume() async {
     final user = _currentUser;
-    final resume = _currentResume;
-    if (user != null && resume != null) {
-      await StorageService.saveResume(user.id.toString(), resume);
+    if (user != null) {
+      await StorageService.saveResumes(user.id.toString(), _resumes);
     }
   }
 
@@ -1432,27 +1499,33 @@ Future<User> signup(SignupRequest request) async {
 
   Future<Resume> _ensureResume() async {
     _requireLogin();
-    if (_currentResume != null) return _currentResume!;
-    final slug = _defaultSlug(_currentUser!.name);
+    final active = _currentResume;
+    if (active != null) return active;
+    if (_resumes.isNotEmpty) {
+      _activeResumeId = _resumes.first.id;
+      return _resumes.first;
+    }
+    final slug = _uniqueSlug(_defaultSlug(_currentUser!.name));
     _usedSlugs.add(slug);
-    _currentResume = Resume(
-      id: 'resume_${_currentUser!.id}',
+    final created = Resume(
+      id: _newResumeId(),
       name: _currentUser!.name,
       email: _currentUser!.email,
       phone: _currentUser!.phone,
       about: _currentUser!.about,
       slug: slug,
     );
+    _resumes.add(created);
+    _activeResumeId = created.id;
     await _persistResume();
-    return _currentResume!;
+    return created;
   }
 
   @override
   Future<List<Resume>> getResumes() async {
     await Future.delayed(_latency);
     _requireLogin();
-    if (_currentResume == null) return [];
-    return [_currentResume!];
+    return List.unmodifiable(_resumes);
   }
 
   @override
@@ -1462,23 +1535,49 @@ Future<User> signup(SignupRequest request) async {
   }
 
   @override
+  Future<Resume> getResumeById(String cvId) async {
+    await Future.delayed(_latency);
+    return _resumeForCv(cvId);
+  }
+
+  @override
   Future<Resume> createResume(Resume resume) async {
     await Future.delayed(_latency);
     _requireLogin();
-    if (_currentResume != null) {
-      throw const ApiException('رزومه از قبل وجود دارد', statusCode: 409);
-    }
-    final slug = resume.slug ?? _defaultSlug(resume.name);
+    final name = resume.name.trim().isEmpty ? _currentUser!.name : resume.name;
+    final email =
+        resume.email.trim().isEmpty ? _currentUser!.email : resume.email;
+    // Auto-generated default slugs are made unique; an explicit slug that
+    // collides is rejected so callers know to pick another.
+    final slug = resume.slug ?? _uniqueSlug(_defaultSlug(name));
     if (_usedSlugs.contains(slug)) {
       throw const ApiException('این آدرس رزومه قبلاً استفاده شده است',
           statusCode: 409);
     }
     _usedSlugs.add(slug);
-    _currentResume = _withScore(
-      resume.copyWith(id: 'resume_${_currentUser!.id}', slug: slug),
+    final created = _withScore(
+      resume.copyWith(id: _newResumeId(), name: name, email: email, slug: slug),
     );
+    _resumes.add(created);
+    _activeResumeId = created.id;
     await _persistResume();
-    return _currentResume!;
+    return created;
+  }
+
+  @override
+  Future<void> deleteResume(String cvId) async {
+    await Future.delayed(_latency);
+    _requireLogin();
+    final idx = _resumes.indexWhere((r) => r.id == cvId);
+    if (idx < 0) {
+      throw const ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    final removed = _resumes.removeAt(idx);
+    if (removed.slug != null) _usedSlugs.remove(removed.slug);
+    if (_activeResumeId == cvId) {
+      _activeResumeId = _resumes.isNotEmpty ? _resumes.first.id : null;
+    }
+    await _persistResume();
   }
 
   @override
@@ -1824,8 +1923,9 @@ Future<User> signup(SignupRequest request) async {
       allowedExtensions: _avatarExtensions,
       maxBytes: _maxAvatarBytes,
     );
-    final url =
-        'https://ui-avatars.com/api/?background=00bfa5&color=fff&name=${Uri.encodeComponent(_currentResume!.name)}&size=256&rounded=true';
+    // Keep the picked image's local path so the UI can display the real photo
+    // (the mock can't host an uploaded file at a public URL).
+    final url = imageFile.path;
     _currentResume = _currentResume!.copyWith(avatarUrl: url);
     if (_currentUser != null) {
       _currentUser = _currentUser!.copyWith(avatarUrl: url);

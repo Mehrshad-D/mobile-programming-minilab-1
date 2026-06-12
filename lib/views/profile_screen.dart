@@ -12,7 +12,7 @@ import '../widgets/loading_widget.dart';
 import 'edit_profile_screen.dart';
 import 'job_detail_screen.dart';
 import 'login_screen.dart';
-import 'resume_builder_screen.dart';
+import 'resume_list_screen.dart';
 import 'applications_screen.dart';
 import 'job_alerts_screen.dart';
 import 'contact_screen.dart';
@@ -169,13 +169,11 @@ class _ProfileScreenState extends State<ProfileScreen> implements ProfileView {
   }
 
   void _openResumeBuilder() async {
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ResumeBuilderScreen()),
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ResumeListScreen()),
     );
-    // Refresh resume after returning
-    if (result == true) {
-      await _loadResume();
-    }
+    // Refresh the primary resume card after managing resumes.
+    await _loadResume();
   }
 
   Widget _buildBody() {

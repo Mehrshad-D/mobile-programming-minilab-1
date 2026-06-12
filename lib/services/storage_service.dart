@@ -166,6 +166,31 @@ class StorageService {
 
   static String _resumeKey(String userId) => '$_keyResumePrefix$userId';
 
+  /// Key holding the JSON array of all resumes owned by a user (multi-resume).
+  static String _resumesKey(String userId) => 'resumes_$userId';
+
+  /// Persist all of the user's resumes so they survive app restarts.
+  static Future<void> saveResumes(String userId, List<Resume> resumes) async {
+    final prefs = await _getPrefs();
+    final encoded = jsonEncode(resumes.map((r) => r.toJson()).toList());
+    await prefs.setString(_resumesKey(userId), encoded);
+  }
+
+  /// Load all resumes for a user. Falls back to the legacy single-resume key
+  /// so resumes saved before multi-resume support are not lost.
+  static Future<List<Resume>> getResumes(String userId) async {
+    final prefs = await _getPrefs();
+    final listJson = prefs.getString(_resumesKey(userId));
+    if (listJson != null) {
+      final decoded = jsonDecode(listJson) as List<dynamic>;
+      return decoded
+          .map((e) => Resume.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    final legacy = await getResume(userId);
+    return legacy == null ? <Resume>[] : [legacy];
+  }
+
   /// Persist the user's resume so it survives app restarts.
   static Future<void> saveResume(String userId, Resume resume) async {
     final prefs = await _getPrefs();
@@ -180,10 +205,11 @@ class StorageService {
     return Resume.fromJson(jsonDecode(resumeJson) as Map<String, dynamic>);
   }
 
-  /// Remove the persisted resume (e.g. on account deletion).
+  /// Remove all persisted resumes (e.g. on account deletion).
   static Future<void> clearResume(String userId) async {
     final prefs = await _getPrefs();
     await prefs.remove(_resumeKey(userId));
+    await prefs.remove(_resumesKey(userId));
   }
 
   // ---------------------------------------------------------------------------

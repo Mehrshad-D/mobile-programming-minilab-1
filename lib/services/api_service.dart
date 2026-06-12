@@ -88,8 +88,14 @@ abstract class ApiService {
   /// Returns the primary resume (convenience wrapper used by existing screens).
   Future<Resume> getResume();
 
+  /// Returns a specific resume by id and makes it the active one for editing.
+  Future<Resume> getResumeById(String cvId);
+
   /// `POST /api/v10/resume`
   Future<Resume> createResume(Resume resume);
+
+  /// Deletes a resume owned by the authenticated user.
+  Future<void> deleteResume(String cvId);
 
   Future<Resume> updateResume(Resume resume);
 
