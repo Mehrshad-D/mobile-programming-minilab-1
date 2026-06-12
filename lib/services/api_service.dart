@@ -79,22 +79,67 @@ abstract class ApiService {
 
 
   // ---------------------------------------------------------------------------
-  // Resume / CV Builder (Section 5.4)
+  // Resume / CV Builder (Section 5.4) — all require authenticated session
   // ---------------------------------------------------------------------------
+
+  /// `GET /api/v10/resume` — list resumes for the authenticated user.
+  Future<List<Resume>> getResumes();
+
+  /// Returns the primary resume (convenience wrapper used by existing screens).
   Future<Resume> getResume();
+
+  /// `POST /api/v10/resume`
   Future<Resume> createResume(Resume resume);
+
   Future<Resume> updateResume(Resume resume);
-  Future<Resume> updatePersonalInfo(Map<String, dynamic> personalInfo);
+
+  /// `GET /api/v10/resume/{lang}/personal-info` (`lang` = `fa` | `en`).
+  Future<Map<String, dynamic>> getPersonalInfo(String lang);
+
+  /// `PUT /api/v10/resume/{lang}/personal-info`
+  Future<Resume> updatePersonalInfo(
+    Map<String, dynamic> personalInfo, {
+    String lang = 'fa',
+  });
+
+  /// `GET /api/v10/resume/fa/link`
+  Future<String> getResumeLink();
+
+  /// `GET /api/v10/resume/translation?lang=`
+  Future<Map<String, dynamic>> getResumeTranslation(String lang);
+
+  // CV Builder slices (cv_id validated against authenticated user)
+  Future<Resume> getCvBasicData(String cvId);
+  Future<Resume> updateCvBasicData(String cvId, Map<String, dynamic> data);
+  Future<Resume> getCvPersonal(String cvId);
+  Future<Resume> updateCvPersonal(String cvId, Map<String, dynamic> data);
+  Future<Resume> getCvEducation(String cvId);
+  Future<Resume> updateCvEducation(String cvId, List<Education> education);
   Future<Resume> addEducation(Education education);
   Future<Resume> updateEducation(String educationId, Education education);
   Future<void> deleteEducation(String educationId);
+  Future<Resume> getCvExperience(String cvId);
+  Future<Resume> updateCvExperience(String cvId, List<WorkExperience> experiences);
   Future<Resume> addExperience(WorkExperience experience);
   Future<Resume> updateExperience(String experienceId, WorkExperience experience);
   Future<void> deleteExperience(String experienceId);
+  Future<Resume> getCvLanguages(String cvId);
   Future<Resume> updateLanguages(List<Language> languages);
+  Future<Resume> getCvSkills(String cvId);
   Future<Resume> updateSkills(List<String> skills);
+
+  /// `GET /api/v10/jobseeker-app/cv-builder/{cv_id}/score`
   Future<int> getResumeScore();
+
+  /// `POST .../avatar` — multipart profile image for the CV.
+  Future<String> uploadCvAvatar(String cvId, File imageFile);
+
+  /// `POST .../cv-file` — multipart resume document.
   Future<String> uploadResumeFile(File file);
+
+  /// `PUT .../slug` — validates uniqueness.
+  Future<Resume> updateResumeSlug(String cvId, String slug);
+
   Future<void> togglePublicity(bool isPublic);
   Future<void> toggleSearchStatus(bool isSearchable);
 

@@ -50,8 +50,13 @@ class MockApiService implements ApiService {
     _currentUser = await StorageService.getCurrentUser();
     _session = await StorageService.getSession();
     if (_currentUser != null) {
-      final jobIds = await StorageService.getAppliedJobs(_currentUser!.id.toString());
+      final userId = _currentUser!.id.toString();
+      final jobIds = await StorageService.getAppliedJobs(userId);
       _appliedJobIds.addAll(jobIds);
+      _currentResume = await StorageService.getResume(userId);
+      if (_currentResume?.slug != null) {
+        _usedSlugs.add(_currentResume!.slug!);
+      }
     }
   }
 
@@ -111,11 +116,12 @@ class MockApiService implements ApiService {
     _currentUser = user;
     await StorageService.saveCurrentUser(user);
 
-    // Load applied jobs for this user.
+    // Load applied jobs and resume for this user.
     final jobIds = await StorageService.getAppliedJobs(user.id.toString());
     _appliedJobIds
       ..clear()
       ..addAll(jobIds);
+    await _loadResumeForCurrentUser();
 
     // 302 Redirect → homepage
     return LoginResult.success(user);
@@ -161,6 +167,7 @@ Future<User> signup(SignupRequest request) async {
   }
   
   _currentUser = newUser;
+  _currentResume = null;
   await StorageService.saveCurrentUser(newUser);
   
   return _currentUser!;
@@ -171,9 +178,23 @@ Future<User> signup(SignupRequest request) async {
     await Future.delayed(const Duration(milliseconds: 300));
     _currentUser = null;
     _session = null;
+    _currentResume = null;
     _appliedJobIds.clear();
     await StorageService.clearCurrentUser();
     await StorageService.clearSession();
+  }
+
+  /// Loads the authenticated user's resume from persistent storage.
+  Future<void> _loadResumeForCurrentUser() async {
+    final user = _currentUser;
+    if (user == null) {
+      _currentResume = null;
+      return;
+    }
+    _currentResume = await StorageService.getResume(user.id.toString());
+    if (_currentResume?.slug != null) {
+      _usedSlugs.add(_currentResume!.slug!);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1044,89 +1065,307 @@ Future<User> signup(SignupRequest request) async {
 
   Resume? _currentResume;
 
+  /// Tracks slugs already taken (simulates server-side uniqueness check).
+  final Set<String> _usedSlugs = <String>{};
+
+  static const int _maxAvatarBytes = 5 * 1024 * 1024; // 5 MB
+  static const int _maxCvFileBytes = 10 * 1024 * 1024; // 10 MB
+  static const List<String> _avatarExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+  static const List<String> _cvFileExtensions = ['pdf', 'doc', 'docx'];
+
+  /// Reuses Section 5.3 session auth — every resume endpoint starts here.
+  void _requireLogin() {
+    if (_currentUser == null) {
+      throw const ApiException(
+        'برای دسترسی به رزومه ابتدا وارد شوید',
+        statusCode: 401,
+      );
+    }
+  }
+
+  Future<Resume> _resumeForCv(String cvId) async {
+    _requireLogin();
+    if (_currentResume == null) {
+      throw const ApiException('رزومه یافت نشد', statusCode: 404);
+    }
+    if (_currentResume!.id != cvId) {
+      throw const ApiException(
+        'دسترسی به این رزومه مجاز نیست',
+        statusCode: 403,
+      );
+    }
+    return _currentResume!;
+  }
+
+  Future<void> _persistResume() async {
+    final user = _currentUser;
+    final resume = _currentResume;
+    if (user != null && resume != null) {
+      await StorageService.saveResume(user.id.toString(), resume);
+    }
+  }
+
+  Resume _withScore(Resume resume) =>
+      resume.copyWith(score: resume.calculateScore());
+
+  Future<void> _validateUpload(
+    File file, {
+    required List<String> allowedExtensions,
+    required int maxBytes,
+  }) async {
+    if (!await file.exists()) {
+      throw const ApiException('فایل یافت نشد', statusCode: 400);
+    }
+    final size = await file.length();
+    if (size > maxBytes) {
+      throw const ApiException('حجم فایل بیش از حد مجاز است', statusCode: 400);
+    }
+    final parts = file.path.split('.');
+    if (parts.length < 2) {
+      throw const ApiException('فرمت فایل مجاز نیست', statusCode: 400);
+    }
+    final ext = parts.last.toLowerCase();
+    if (!allowedExtensions.contains(ext)) {
+      throw const ApiException('فرمت فایل مجاز نیست', statusCode: 400);
+    }
+  }
+
+  String _defaultSlug(String name) =>
+      '${name.toLowerCase().replaceAll(' ', '-').replaceAll(RegExp(r'[^a-z0-9\-]'), '')}-resume';
+
+  Map<String, dynamic> _personalInfoMap(Resume resume, String lang) {
+    if (lang == 'en') {
+      return {
+        'name': resume.name,
+        'email': resume.email,
+        'phone': resume.phone,
+        'personal': resume.personal,
+        'about': resume.about,
+        'public_contact': resume.publicContact,
+      };
+    }
+    return {
+      'name': resume.name,
+      'birth_date': resume.birthDate,
+      'gender': resume.gender,
+      'military_status': resume.militaryStatus,
+      'email': resume.email,
+      'phone': resume.phone,
+      'personal': resume.personal,
+      'about': resume.about,
+      'public_contact': resume.publicContact,
+    };
+  }
+
+  Future<Resume> _ensureResume() async {
+    _requireLogin();
+    if (_currentResume != null) return _currentResume!;
+    final slug = _defaultSlug(_currentUser!.name);
+    _usedSlugs.add(slug);
+    _currentResume = Resume(
+      id: 'resume_${_currentUser!.id}',
+      name: _currentUser!.name,
+      email: _currentUser!.email,
+      phone: _currentUser!.phone,
+      about: _currentUser!.about,
+      slug: slug,
+    );
+    await _persistResume();
+    return _currentResume!;
+  }
+
+  @override
+  Future<List<Resume>> getResumes() async {
+    await Future.delayed(_latency);
+    _requireLogin();
+    if (_currentResume == null) return [];
+    return [_currentResume!];
+  }
+
   @override
   Future<Resume> getResume() async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای مشاهده رزومه ابتدا وارد شوید', statusCode: 401);
-    }
-    
-    if (_currentResume == null) {
-      // Create default resume
-      _currentResume = Resume(
-        id: 'resume_${_currentUser!.id}',
-        name: _currentUser!.name,
-        email: _currentUser!.email,
-        phone: _currentUser!.phone,
-        about: _currentUser!.about,
-        slug: '${_currentUser!.name.toLowerCase().replaceAll(' ', '-')}-resume',
-      );
-    }
-    
-    return _currentResume!;
+    return _ensureResume();
   }
 
   @override
   Future<Resume> createResume(Resume resume) async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای ساخت رزومه ابتدا وارد شوید', statusCode: 401);
+    _requireLogin();
+    if (_currentResume != null) {
+      throw const ApiException('رزومه از قبل وجود دارد', statusCode: 409);
     }
-    
-    _currentResume = resume.copyWith(
-      id: 'resume_${_currentUser!.id}',
-      score: resume.calculateScore(),
+    final slug = resume.slug ?? _defaultSlug(resume.name);
+    if (_usedSlugs.contains(slug)) {
+      throw const ApiException('این آدرس رزومه قبلاً استفاده شده است',
+          statusCode: 409);
+    }
+    _usedSlugs.add(slug);
+    _currentResume = _withScore(
+      resume.copyWith(id: 'resume_${_currentUser!.id}', slug: slug),
     );
-    
+    await _persistResume();
     return _currentResume!;
   }
 
   @override
   Future<Resume> updateResume(Resume resume) async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null || _currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
+    _requireLogin();
+    if (_currentResume == null) {
+      throw const ApiException('رزومه یافت نشد', statusCode: 404);
     }
-    
-    _currentResume = resume.copyWith(
-      score: resume.calculateScore(),
-    );
-    
+    if (resume.id != _currentResume!.id) {
+      throw const ApiException(
+        'دسترسی به این رزومه مجاز نیست',
+        statusCode: 403,
+      );
+    }
+    _currentResume = _withScore(resume);
+    await _persistResume();
     return _currentResume!;
   }
 
   @override
-  Future<Resume> updatePersonalInfo(Map<String, dynamic> personalInfo) async {
+  Future<Map<String, dynamic>> getPersonalInfo(String lang) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
-    _currentResume = _currentResume!.copyWith(
-      name: personalInfo['name'] ?? _currentResume!.name,
-      birthDate: personalInfo['birth_date'] ?? _currentResume!.birthDate,
-      gender: personalInfo['gender'] ?? _currentResume!.gender,
-      militaryStatus: personalInfo['military_status'] ?? _currentResume!.militaryStatus,
-      email: personalInfo['email'] ?? _currentResume!.email,
-      phone: personalInfo['phone'] ?? _currentResume!.phone,
-      about: personalInfo['about'] ?? _currentResume!.about,
+    final resume = await _ensureResume();
+    return _personalInfoMap(resume, lang);
+  }
+
+  @override
+  Future<Resume> updatePersonalInfo(
+    Map<String, dynamic> personalInfo, {
+    String lang = 'fa',
+  }) async {
+    await Future.delayed(_latency);
+    await _ensureResume();
+    _currentResume = _withScore(
+      _currentResume!.copyWith(
+        name: personalInfo['name'] as String? ?? _currentResume!.name,
+        birthDate: lang == 'fa'
+            ? personalInfo['birth_date'] as String? ?? _currentResume!.birthDate
+            : _currentResume!.birthDate,
+        gender: lang == 'fa'
+            ? personalInfo['gender'] as String? ?? _currentResume!.gender
+            : _currentResume!.gender,
+        militaryStatus: lang == 'fa'
+            ? personalInfo['military_status'] as String? ??
+                _currentResume!.militaryStatus
+            : _currentResume!.militaryStatus,
+        email: personalInfo['email'] as String? ?? _currentResume!.email,
+        phone: personalInfo['phone'] as String? ?? _currentResume!.phone,
+        personal:
+            personalInfo['personal'] as String? ?? _currentResume!.personal,
+        about: personalInfo['about'] as String? ?? _currentResume!.about,
+        publicContact: personalInfo['public_contact'] as String? ??
+            _currentResume!.publicContact,
+      ),
     );
-    
+    await _persistResume();
+    return _currentResume!;
+  }
+
+  @override
+  Future<String> getResumeLink() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final resume = await _ensureResume();
+    final slug = resume.slug ?? _defaultSlug(resume.name);
+    return 'https://jobinja.ir/r/$slug';
+  }
+
+  @override
+  Future<Map<String, dynamic>> getResumeTranslation(String lang) async {
+    await Future.delayed(_latency);
+    final resume = await _ensureResume();
+    return {
+      'lang': lang,
+      'name': resume.name,
+      'about': resume.about,
+      'personal': resume.personal,
+      'skills': resume.skills,
+      'education': resume.education.map((e) => e.toJson()).toList(),
+      'experiences': resume.experiences.map((e) => e.toJson()).toList(),
+    };
+  }
+
+  // ---- CV Builder slices ----
+
+  @override
+  Future<Resume> getCvBasicData(String cvId) async {
+    await Future.delayed(_latency);
+    return _resumeForCv(cvId);
+  }
+
+  @override
+  Future<Resume> updateCvBasicData(
+    String cvId,
+    Map<String, dynamic> data,
+  ) async {
+    await Future.delayed(_latency);
+    await _resumeForCv(cvId);
+    _currentResume = _withScore(
+      _currentResume!.copyWith(
+        name: data['name'] as String? ?? _currentResume!.name,
+        birthDate: data['birth_date'] as String? ?? _currentResume!.birthDate,
+        gender: data['gender'] as String? ?? _currentResume!.gender,
+        militaryStatus:
+            data['military_status'] as String? ?? _currentResume!.militaryStatus,
+        email: data['email'] as String? ?? _currentResume!.email,
+        phone: data['phone'] as String? ?? _currentResume!.phone,
+      ),
+    );
+    await _persistResume();
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> getCvPersonal(String cvId) async {
+    await Future.delayed(_latency);
+    return _resumeForCv(cvId);
+  }
+
+  @override
+  Future<Resume> updateCvPersonal(
+    String cvId,
+    Map<String, dynamic> data,
+  ) async {
+    await Future.delayed(_latency);
+    await _resumeForCv(cvId);
+    _currentResume = _withScore(
+      _currentResume!.copyWith(
+        personal: data['personal'] as String? ?? _currentResume!.personal,
+        about: data['about'] as String? ?? _currentResume!.about,
+        publicContact:
+            data['public_contact'] as String? ?? _currentResume!.publicContact,
+      ),
+    );
+    await _persistResume();
+    return _currentResume!;
+  }
+
+  @override
+  Future<Resume> getCvEducation(String cvId) async {
+    await Future.delayed(_latency);
+    return _resumeForCv(cvId);
+  }
+
+  @override
+  Future<Resume> updateCvEducation(
+    String cvId,
+    List<Education> education,
+  ) async {
+    await Future.delayed(_latency);
+    await _resumeForCv(cvId);
+    _currentResume = _withScore(_currentResume!.copyWith(education: education));
+    await _persistResume();
     return _currentResume!;
   }
 
   @override
   Future<Resume> addEducation(Education education) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
+    await _ensureResume();
     final newEducation = Education(
       id: 'edu_${DateTime.now().millisecondsSinceEpoch}',
       degree: education.degree,
@@ -1136,25 +1375,20 @@ Future<User> signup(SignupRequest request) async {
       endYear: education.endYear,
       isCurrent: education.isCurrent,
     );
-    
-    final updatedEducation = [..._currentResume!.education, newEducation];
-    _currentResume = _currentResume!.copyWith(
-      education: updatedEducation,
-      score: _currentResume!.calculateScore(),
+    _currentResume = _withScore(
+      _currentResume!.copyWith(
+        education: [..._currentResume!.education, newEducation],
+      ),
     );
-    
+    await _persistResume();
     return _currentResume!;
   }
 
   @override
   Future<Resume> updateEducation(String educationId, Education education) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
-    final updatedEducation = _currentResume!.education.map((e) {
+    await _ensureResume();
+    final updated = _currentResume!.education.map((e) {
       if (e.id == educationId) {
         return Education(
           id: e.id,
@@ -1168,41 +1402,47 @@ Future<User> signup(SignupRequest request) async {
       }
       return e;
     }).toList();
-    
-    _currentResume = _currentResume!.copyWith(
-      education: updatedEducation,
-      score: _currentResume!.calculateScore(),
-    );
-    
+    _currentResume = _withScore(_currentResume!.copyWith(education: updated));
+    await _persistResume();
     return _currentResume!;
   }
 
   @override
   Future<void> deleteEducation(String educationId) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
-    final updatedEducation = _currentResume!.education
-        .where((e) => e.id != educationId)
-        .toList();
-    
-    _currentResume = _currentResume!.copyWith(
-      education: updatedEducation,
-      score: _currentResume!.calculateScore(),
+    await _ensureResume();
+    _currentResume = _withScore(
+      _currentResume!.copyWith(
+        education:
+            _currentResume!.education.where((e) => e.id != educationId).toList(),
+      ),
     );
+    await _persistResume();
+  }
+
+  @override
+  Future<Resume> getCvExperience(String cvId) async {
+    await Future.delayed(_latency);
+    return _resumeForCv(cvId);
+  }
+
+  @override
+  Future<Resume> updateCvExperience(
+    String cvId,
+    List<WorkExperience> experiences,
+  ) async {
+    await Future.delayed(_latency);
+    await _resumeForCv(cvId);
+    _currentResume =
+        _withScore(_currentResume!.copyWith(experiences: experiences));
+    await _persistResume();
+    return _currentResume!;
   }
 
   @override
   Future<Resume> addExperience(WorkExperience experience) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
+    await _ensureResume();
     final newExperience = WorkExperience(
       id: 'exp_${DateTime.now().millisecondsSinceEpoch}',
       company: experience.company,
@@ -1212,25 +1452,23 @@ Future<User> signup(SignupRequest request) async {
       endYear: experience.endYear,
       isCurrent: experience.isCurrent,
     );
-    
-    final updatedExperiences = [..._currentResume!.experiences, newExperience];
-    _currentResume = _currentResume!.copyWith(
-      experiences: updatedExperiences,
-      score: _currentResume!.calculateScore(),
+    _currentResume = _withScore(
+      _currentResume!.copyWith(
+        experiences: [..._currentResume!.experiences, newExperience],
+      ),
     );
-    
+    await _persistResume();
     return _currentResume!;
   }
 
   @override
-  Future<Resume> updateExperience(String experienceId, WorkExperience experience) async {
+  Future<Resume> updateExperience(
+    String experienceId,
+    WorkExperience experience,
+  ) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
-    final updatedExperiences = _currentResume!.experiences.map((e) {
+    await _ensureResume();
+    final updated = _currentResume!.experiences.map((e) {
       if (e.id == experienceId) {
         return WorkExperience(
           id: e.id,
@@ -1244,109 +1482,137 @@ Future<User> signup(SignupRequest request) async {
       }
       return e;
     }).toList();
-    
-    _currentResume = _currentResume!.copyWith(
-      experiences: updatedExperiences,
-      score: _currentResume!.calculateScore(),
-    );
-    
+    _currentResume = _withScore(_currentResume!.copyWith(experiences: updated));
+    await _persistResume();
     return _currentResume!;
   }
 
   @override
   Future<void> deleteExperience(String experienceId) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
-    final updatedExperiences = _currentResume!.experiences
-        .where((e) => e.id != experienceId)
-        .toList();
-    
-    _currentResume = _currentResume!.copyWith(
-      experiences: updatedExperiences,
-      score: _currentResume!.calculateScore(),
+    await _ensureResume();
+    _currentResume = _withScore(
+      _currentResume!.copyWith(
+        experiences: _currentResume!.experiences
+            .where((e) => e.id != experienceId)
+            .toList(),
+      ),
     );
+    await _persistResume();
+  }
+
+  @override
+  Future<Resume> getCvLanguages(String cvId) async {
+    await Future.delayed(_latency);
+    return _resumeForCv(cvId);
   }
 
   @override
   Future<Resume> updateLanguages(List<Language> languages) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
-    _currentResume = _currentResume!.copyWith(
-      languages: languages,
-      score: _currentResume!.calculateScore(),
-    );
-    
+    await _ensureResume();
+    _currentResume = _withScore(_currentResume!.copyWith(languages: languages));
+    await _persistResume();
     return _currentResume!;
+  }
+
+  @override
+  Future<Resume> getCvSkills(String cvId) async {
+    await Future.delayed(_latency);
+    return _resumeForCv(cvId);
   }
 
   @override
   Future<Resume> updateSkills(List<String> skills) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
-    _currentResume = _currentResume!.copyWith(
-      skills: skills,
-      score: _currentResume!.calculateScore(),
-    );
-    
+    await _ensureResume();
+    _currentResume = _withScore(_currentResume!.copyWith(skills: skills));
+    await _persistResume();
     return _currentResume!;
   }
 
   @override
   Future<int> getResumeScore() async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      return 0;
+    _requireLogin();
+    if (_currentResume == null) return 0;
+    final score = _currentResume!.calculateScore();
+    _currentResume = _currentResume!.copyWith(score: score);
+    await _persistResume();
+    return score;
+  }
+
+  @override
+  Future<String> uploadCvAvatar(String cvId, File imageFile) async {
+    await Future.delayed(_latency);
+    await _resumeForCv(cvId);
+    await _validateUpload(
+      imageFile,
+      allowedExtensions: _avatarExtensions,
+      maxBytes: _maxAvatarBytes,
+    );
+    final url =
+        'https://ui-avatars.com/api/?background=00bfa5&color=fff&name=${Uri.encodeComponent(_currentResume!.name)}&size=256&rounded=true';
+    _currentResume = _currentResume!.copyWith(avatarUrl: url);
+    if (_currentUser != null) {
+      _currentUser = _currentUser!.copyWith(avatarUrl: url);
+      await StorageService.saveCurrentUser(_currentUser!);
     }
-    
-    return _currentResume!.calculateScore();
+    await _persistResume();
+    return url;
   }
 
   @override
   Future<String> uploadResumeFile(File file) async {
     await Future.delayed(_latency);
-    
-    if (_currentUser == null) {
-      throw ApiException('برای آپلود رزومه ابتدا وارد شوید', statusCode: 401);
+    _requireLogin();
+    await _ensureResume();
+    await _validateUpload(
+      file,
+      allowedExtensions: _cvFileExtensions,
+      maxBytes: _maxCvFileBytes,
+    );
+    final url =
+        'https://jobinja.ir/storage/resumes/${_currentUser!.id}/${file.path.split('/').last}';
+    _currentResume = _currentResume!.copyWith(cvFileUrl: url);
+    await _persistResume();
+    return url;
+  }
+
+  @override
+  Future<Resume> updateResumeSlug(String cvId, String slug) async {
+    await Future.delayed(_latency);
+    await _resumeForCv(cvId);
+    final normalized = slug.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      throw const ApiException('آدرس رزومه نمی‌تواند خالی باشد', statusCode: 400);
     }
-    
-    // Mock: return fake URL
-    final fakeUrl = 'https://example.com/resumes/${_currentUser!.id}/resume.pdf';
-    return fakeUrl;
+    final currentSlug = _currentResume!.slug;
+    if (_usedSlugs.contains(normalized) && normalized != currentSlug) {
+      throw const ApiException('این آدرس رزومه قبلاً استفاده شده است',
+          statusCode: 409);
+    }
+    if (currentSlug != null) _usedSlugs.remove(currentSlug);
+    _usedSlugs.add(normalized);
+    _currentResume = _currentResume!.copyWith(slug: normalized);
+    await _persistResume();
+    return _currentResume!;
   }
 
   @override
   Future<void> togglePublicity(bool isPublic) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
+    await _ensureResume();
     _currentResume = _currentResume!.copyWith(isPublic: isPublic);
+    await _persistResume();
   }
 
   @override
   Future<void> toggleSearchStatus(bool isSearchable) async {
     await Future.delayed(_latency);
-    
-    if (_currentResume == null) {
-      throw ApiException('رزومه یافت نشد', statusCode: 404);
-    }
-    
+    await _ensureResume();
     _currentResume = _currentResume!.copyWith(isSearchable: isSearchable);
+    await _persistResume();
   }
 
 

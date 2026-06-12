@@ -154,6 +154,7 @@ class Resume {
   final String? phone;
   
   // Personal info
+  final String? personal; // اطلاعات تکمیلی شخصی (جدا از «درباره من»)
   final String? about; // درباره من
   final String? publicContact; // اطلاعات تماس عمومی
   
@@ -182,6 +183,7 @@ class Resume {
     this.militaryStatus,
     required this.email,
     this.phone,
+    this.personal,
     this.about,
     this.publicContact,
     this.education = const [],
@@ -206,6 +208,7 @@ class Resume {
       militaryStatus: json['military_status'] as String?,
       email: json['email'] as String,
       phone: json['phone'] as String?,
+      personal: json['personal'] as String?,
       about: json['about'] as String?,
       publicContact: json['public_contact'] as String?,
       education: (json['education'] as List<dynamic>?)
@@ -236,6 +239,7 @@ class Resume {
     'military_status': militaryStatus,
     'email': email,
     'phone': phone,
+    'personal': personal,
     'about': about,
     'public_contact': publicContact,
     'education': education.map((e) => e.toJson()).toList(),
@@ -292,6 +296,7 @@ class Resume {
     String? militaryStatus,
     String? email,
     String? phone,
+    String? personal,
     String? about,
     String? publicContact,
     List<Education>? education,
@@ -314,6 +319,7 @@ class Resume {
       militaryStatus: militaryStatus ?? this.militaryStatus,
       email: email ?? this.email,
       phone: phone ?? this.phone,
+      personal: personal ?? this.personal,
       about: about ?? this.about,
       publicContact: publicContact ?? this.publicContact,
       education: education ?? this.education,

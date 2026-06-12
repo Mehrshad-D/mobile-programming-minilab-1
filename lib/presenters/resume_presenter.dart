@@ -223,4 +223,48 @@ class ResumePresenter {
       _view.showError('خطا در تغییر وضعیت جستجو');
     }
   }
+
+  Future<void> updateSlug(String cvId, String slug) async {
+    _view.showLoading();
+    try {
+      final updated = await _api.updateResumeSlug(cvId, slug);
+      _view.onResumeUpdated(updated);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در به‌روزرسانی آدرس رزومه');
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  Future<void> uploadAvatar(String cvId, File imageFile) async {
+    _view.showLoading();
+    try {
+      await _api.uploadCvAvatar(cvId, imageFile);
+      final updated = await _api.getResume();
+      _view.onResumeUpdated(updated);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در آپلود تصویر پروفایل');
+    } finally {
+      _view.hideLoading();
+    }
+  }
+
+  Future<void> uploadCvFile(File file) async {
+    _view.showLoading();
+    try {
+      await _api.uploadResumeFile(file);
+      final updated = await _api.getResume();
+      _view.onResumeUpdated(updated);
+    } on ApiException catch (e) {
+      _view.showError(e.message);
+    } catch (_) {
+      _view.showError('خطا در آپلود فایل رزومه');
+    } finally {
+      _view.hideLoading();
+    }
+  }
 }

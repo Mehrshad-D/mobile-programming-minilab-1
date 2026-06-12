@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/auth_session.dart';
+import '../models/resume.dart';
 import '../models/user.dart';
-import '../models/job.dart';
 
 /// Handles local persistence of user data and app state
 class StorageService {
@@ -10,6 +10,7 @@ class StorageService {
   static const String _keyRegisteredUsers = 'registered_users';
   static const String _keyAppliedJobs = 'applied_jobs';
   static const String _keySession = 'auth_session';
+  static const String _keyResumePrefix = 'resume_';
 
   static Future<SharedPreferences> _getPrefs() async {
     return await SharedPreferences.getInstance();
@@ -155,5 +156,31 @@ class StorageService {
       jobs.add(jobId);
       await saveAppliedJobs(userId, jobs);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resume persistence (Section 5.4)
+  // ---------------------------------------------------------------------------
+
+  static String _resumeKey(String userId) => '$_keyResumePrefix$userId';
+
+  /// Persist the user's resume so it survives app restarts.
+  static Future<void> saveResume(String userId, Resume resume) async {
+    final prefs = await _getPrefs();
+    await prefs.setString(_resumeKey(userId), jsonEncode(resume.toJson()));
+  }
+
+  /// Load the persisted resume for a user, or `null` if none exists.
+  static Future<Resume?> getResume(String userId) async {
+    final prefs = await _getPrefs();
+    final resumeJson = prefs.getString(_resumeKey(userId));
+    if (resumeJson == null) return null;
+    return Resume.fromJson(jsonDecode(resumeJson) as Map<String, dynamic>);
+  }
+
+  /// Remove the persisted resume (e.g. on account deletion).
+  static Future<void> clearResume(String userId) async {
+    final prefs = await _getPrefs();
+    await prefs.remove(_resumeKey(userId));
   }
 }
